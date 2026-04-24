@@ -8,6 +8,15 @@ import re
 import time
 import urllib.request
 import io
+import json
+import subprocess
+import zipfile
+import shutil
+import ssl
+
+ssl._create_default_https_context = ssl._create_unverified_context
+APP_VERSION = "1.0.3"
+GITHUB_REPO = "mathced-com/CED_YTDL"
 
 try:
     from PIL import Image, ImageTk
@@ -46,7 +55,7 @@ class ScrollableFrame(ttk.Frame):
 class YouTubeDownloaderGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("CED_YouTube 下載器")
+        self.root.title(f"CED_YouTube 下載器 v{APP_VERSION}")
         self.root.geometry("750x650")
         self.root.resizable(False, False)
         
@@ -66,6 +75,8 @@ class YouTubeDownloaderGUI:
         
         self.create_widgets()
         self.update_quality_options()
+        
+        self.check_ffmpeg_environment()
         
         if not HAS_PIL:
             messagebox.showwarning("缺少套件", "系統缺少 Pillow 套件，將無法顯示影片封面。")
@@ -140,6 +151,7 @@ class YouTubeDownloaderGUI:
         self.cancel_btn.pack(side="left", padx=5)
         
         tk.Button(btn_frame, text="檢查更新 yt-dlp", command=self.update_ytdlp).pack(side="left", padx=15)
+        tk.Button(btn_frame, text="檢查主程式更新", command=self.check_app_update, bg="#FF9800", fg="white").pack(side="left", padx=5)
 
     def select_all(self):
         for var in self.playlist_vars:
@@ -189,6 +201,127 @@ class YouTubeDownloaderGUI:
                 self.root.after(0, lambda: self.update_progress_ui(0, "準備就緒", "blue"))
             else:
                 self.root.after(0, lambda: self.update_progress_ui(0, "更新失敗", "red"))
+        threading.Thread(target=run_update, daemon=True).start()
+
+    def check_ffmpeg_environment(self):
+        if os.path.exists("ffmpeg.exe") and os.path.exists("ffprobe.exe"):
+            return
+            
+        def download_ffmpeg():
+            self.update_progress_ui(0, "首次啟動：正在背景下載 FFmpeg 元件 (約 40MB)，請稍候...", "orange")
+            self.download_btn.config(state="disabled")
+            self.analyze_btn.config(state="disabled")
+            try:
+                url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+                urllib.request.urlretrieve(url, "ffmpeg.zip")
+                self.update_progress_ui(0, "下載完成，正在提取元件...", "orange")
+                with zipfile.ZipFile("ffmpeg.zip", 'r') as zip_ref:
+                    bin_path = None
+                    for name in zip_ref.namelist():
+                        if name.endswith('bin/ffmpeg.exe'):
+                            bin_path = os.path.dirname(name)
+                            break
+                    if bin_path:
+                        for exe in ['ffmpeg.exe', 'ffprobe.exe']:
+                            source = f"{bin_path}/{exe}"
+                            target = os.path.join(os.getcwd(), exe)
+                            with zip_ref.open(source) as zf, open(target, 'wb') as f:
+                                shutil.copyfileobj(zf, f)
+                self.update_progress_ui(0, "元件配置完成，可以開始使用！", "green")
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("錯誤", f"FFmpeg 下載失敗：\n{e}"))
+                self.update_progress_ui(0, "環境不完整，可能無法進行影片轉檔", "red")
+            finally:
+                if os.path.exists("ffmpeg.zip"):
+                    try:
+                        os.remove("ffmpeg.zip")
+                    except:
+                        pass
+                self.root.after(0, lambda: self.download_btn.config(state="normal" if self.video_info else "disabled"))
+                self.root.after(0, lambda: self.analyze_btn.config(state="normal"))
+
+        threading.Thread(target=download_ffmpeg, daemon=True).start()
+
+    def check_app_update(self):
+        self.update_progress_ui(0, "正在檢查主程式更新...", "blue")
+        def run_check():
+            try:
+                req = urllib.request.Request(f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest", headers={'User-Agent': 'Mozilla/5.0'})
+                response = urllib.request.urlopen(req, timeout=10)
+                data = json.loads(response.read().decode('utf-8'))
+                latest_version = data.get("tag_name", "").replace("v", "")
+                
+                if not latest_version:
+                    self.root.after(0, lambda: self.update_progress_ui(0, "無法取得版本資訊", "red"))
+                    return
+                    
+                if latest_version != APP_VERSION:
+                    assets = data.get("assets", [])
+                    download_url = None
+                    for asset in assets:
+                        if asset.get("name") == "CED_YTDL.exe":
+                            download_url = asset.get("browser_download_url")
+                            break
+                            
+                    if download_url:
+                        self.root.after(0, lambda: self.prompt_update(latest_version, download_url))
+                    else:
+                        self.root.after(0, lambda: messagebox.showinfo("發現新版本", f"目前最新版本為 {latest_version}，但開發者尚未上傳執行檔。"))
+                        self.root.after(0, lambda: self.update_progress_ui(0, "檢查完畢", "blue"))
+                else:
+                    self.root.after(0, lambda: messagebox.showinfo("檢查更新", "您目前使用的已經是最新版本！"))
+                    self.root.after(0, lambda: self.update_progress_ui(0, "準備就緒", "blue"))
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    self.root.after(0, lambda: messagebox.showinfo("檢查更新", "專案尚未發布任何版本 (Release)。"))
+                    self.root.after(0, lambda: self.update_progress_ui(0, "無可用更新", "blue"))
+                else:
+                    self.root.after(0, lambda: self.update_progress_ui(0, f"檢查失敗: {e}", "red"))
+            except Exception as e:
+                self.root.after(0, lambda: self.update_progress_ui(0, f"檢查失敗: {e}", "red"))
+        
+        threading.Thread(target=run_check, daemon=True).start()
+
+    def prompt_update(self, latest_version, download_url):
+        if messagebox.askyesno("發現新版本", f"發現新版本 v{latest_version}！\n是否要立即下載並更新？\n\n注意：更新時程式將會自動關閉並重啟。"):
+            self.perform_update(download_url)
+        else:
+            self.update_progress_ui(0, "已取消更新", "blue")
+
+    def perform_update(self, download_url):
+        self.download_btn.config(state="disabled")
+        self.analyze_btn.config(state="disabled")
+        self.update_progress_ui(0, "正在下載新版本，請勿關閉程式...", "orange")
+        
+        def run_update():
+            try:
+                new_exe = "CED_YTDL_update.exe"
+                urllib.request.urlretrieve(download_url, new_exe)
+                
+                # 取得目前執行檔的名稱 (如果是 exe 就是 xxx.exe，如果是 py 就是 main.py)
+                current_exe = os.path.basename(sys.argv[0])
+                if not current_exe.endswith('.exe'):
+                    current_exe = "CED_YTDL.exe" # 預設名稱
+                
+                bat_content = f"""@echo off
+echo Updating CED_YTDL... Please wait.
+timeout /t 2 /nobreak >nul
+del "{current_exe}"
+ren "{new_exe}" "{current_exe}"
+start "" "{current_exe}"
+del "%~f0"
+"""
+                with open("update_helper.bat", "w", encoding="utf-8") as f:
+                    f.write(bat_content)
+                
+                subprocess.Popen("update_helper.bat", shell=True)
+                os._exit(0)
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("錯誤", f"更新失敗：\n{e}"))
+                self.root.after(0, lambda: self.update_progress_ui(0, "更新失敗", "red"))
+                self.root.after(0, lambda: self.download_btn.config(state="normal" if self.video_info else "disabled"))
+                self.root.after(0, lambda: self.analyze_btn.config(state="normal"))
+
         threading.Thread(target=run_update, daemon=True).start()
 
     def clear_url(self):

@@ -36,7 +36,7 @@ def check_gh_login():
 
 def main():
     print("==============================================")
-    print("      CED_YTDL 一鍵發布新版本助手 (全自動版)")
+    print("      CYT_YTDL 一鍵發布新版本助手 (全自動版)")
     print("==============================================\n")
     
     current_version = "未知"
@@ -85,9 +85,9 @@ def main():
     print("\n[3/6] 正在打包成執行檔 (這需要 1~2 分鐘，請耐心等候)...")
     print("      (正在確認 PyInstaller 封裝套件是否安裝)")
     subprocess.run(["py", "-3", "-m", "pip", "install", "pyinstaller"], capture_output=True)
-    subprocess.run(["py", "-3", "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed", "--name", "CED_YTDL", "main.py"])
+    subprocess.run(["py", "-3", "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed", "--name", "CYT_YTDL", "main.py"])
     
-    exe_path = os.path.join("dist", "CED_YTDL.exe")
+    exe_path = os.path.join("dist", "CYT_YTDL.exe")
     if not os.path.exists(exe_path):
         print(f"\n[Error] 打包失敗，找不到 {exe_path}")
         input("請按 Enter 鍵結束...")
@@ -98,7 +98,7 @@ def main():
     subprocess.run(["git", "commit", "-m", f"發布新版本 v{new_version}: {update_notes}"])
     subprocess.run(["git", "push"])
     
-    print("\n[5/6] 正在自動建立 GitHub Release 並將 CED_YTDL.exe 上傳至雲端...")
+    print("\n[5/6] 正在自動建立 GitHub Release 並將 CYT_YTDL.exe 上傳至雲端...")
     print("      (檔案有點大，上傳可能需要幾十秒鐘，請勿關閉視窗)")
     result = subprocess.run([
         "gh", "release", "create", f"v{new_version}", 
@@ -110,7 +110,7 @@ def main():
     if result.returncode == 0:
         print("\n[Success] 發布成功！檔案已由程式幫您自動上傳完畢！")
         print("\n[6/6] 正在為您開啟最終的發布網頁以供確認...")
-        release_url = f"https://github.com/mathced-com/CED_YTDL/releases/tag/v{new_version}"
+        release_url = f"https://github.com/mathced-com/CYT_YTDL/releases/tag/v{new_version}"
         webbrowser.open(release_url)
     else:
         print(f"\n[Error] 自動發布失敗: {result.stderr}")

@@ -15,8 +15,8 @@ import shutil
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "1.1.0"
-GITHUB_REPO = "mathced-com/CED_YTDL"
+APP_VERSION = "1.2.0"
+GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
     from PIL import Image, ImageTk
@@ -55,7 +55,7 @@ class ScrollableFrame(ttk.Frame):
 class YouTubeDownloaderGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"CED_YouTube 下載器 v{APP_VERSION}")
+        self.root.title(f"CYT_YouTube 下載器 v{APP_VERSION}")
         self.root.geometry("750x650")
         self.root.resizable(False, False)
         
@@ -86,7 +86,7 @@ class YouTubeDownloaderGUI:
             messagebox.showwarning("缺少套件", "系統缺少 Pillow 套件，將無法顯示影片封面。")
 
     def create_widgets(self):
-        title_label = tk.Label(self.root, text=f"CED_YouTube 下載器 v{APP_VERSION}", font=("Arial", 16, "bold"))
+        title_label = tk.Label(self.root, text=f"CYT_YouTube 下載器 v{APP_VERSION}", font=("Arial", 16, "bold"))
         title_label.pack(pady=10)
         
         url_frame = tk.Frame(self.root)
@@ -286,7 +286,7 @@ class YouTubeDownloaderGUI:
                     assets = data.get("assets", [])
                     download_url = None
                     for asset in assets:
-                        if asset.get("name") == "CED_YTDL.exe":
+                        if asset.get("name") == "CYT_YTDL.exe":
                             download_url = asset.get("browser_download_url")
                             break
                             
@@ -328,7 +328,7 @@ class YouTubeDownloaderGUI:
                         percent = min(100.0, (readsofar / totalsize) * 100)
                         self.root.after(0, lambda: self.update_progress_ui(percent, f"正在下載新版本... ({percent:.1f}%)", "orange"))
 
-                new_exe_name = "CED_YTDL_update.exe"
+                new_exe_name = "CYT_YTDL_update.exe"
                 new_exe_path = os.path.join(self.app_dir, new_exe_name)
                 urllib.request.urlretrieve(download_url, new_exe_path, reporthook=reporthook)
                 
@@ -339,10 +339,10 @@ class YouTubeDownloaderGUI:
                         # 取得目前執行檔的名稱
                         current_exe_name = os.path.basename(sys.executable if getattr(sys, 'frozen', False) else sys.argv[0])
                         if not current_exe_name.endswith('.exe'):
-                            current_exe_name = "CED_YTDL.exe" # 預設名稱
+                            current_exe_name = "CYT_YTDL.exe" # 預設名稱
                         
                         bat_path = os.path.join(self.app_dir, "update_helper.bat")
-                        bat_content = f"""@echo off\nchcp 65001 >nul\ncd /d "{self.app_dir}"\necho 正在更新 CED_YTDL... 請稍候。\n:wait_loop\ntimeout /t 1 /nobreak >nul\ndel "{current_exe_name}" >nul 2>&1\nif exist "{current_exe_name}" goto wait_loop\nren "{new_exe_name}" "{current_exe_name}"\nstart "" "{current_exe_name}"\ndel "%~f0"\n"""
+                        bat_content = f"""@echo off\nchcp 65001 >nul\ncd /d "{self.app_dir}"\necho 正在更新 CYT_YTDL... 請稍候。\n:wait_loop\ntimeout /t 1 /nobreak >nul\ndel "{current_exe_name}" >nul 2>&1\nif exist "{current_exe_name}" goto wait_loop\nren "{new_exe_name}" "{current_exe_name}"\nstart "" "{current_exe_name}"\ndel "%~f0"\n"""
                         with open(bat_path, "w", encoding="utf-8") as f:
                             f.write(bat_content)
                         

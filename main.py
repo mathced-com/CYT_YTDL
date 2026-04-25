@@ -15,7 +15,7 @@ import shutil
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -59,17 +59,10 @@ class YouTubeDownloaderGUI:
         self.root.geometry("750x650")
         self.root.resizable(False, False)
         
-        def resource_path(relative_path):
-            try:
-                base_path = sys._MEIPASS
-            except Exception:
-                base_path = os.path.dirname(os.path.abspath(__file__))
-            return os.path.join(base_path, relative_path)
-        
         self.app_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
         
         try:
-            self.root.iconbitmap(resource_path("icon.ico"))
+            self.root.iconbitmap(self.resource_path("icon.ico"))
         except Exception:
             pass
             
@@ -105,9 +98,27 @@ class YouTubeDownloaderGUI:
         if not HAS_PIL:
             messagebox.showwarning("缺少套件", "系統缺少 Pillow 套件，將無法顯示影片封面。")
 
+    def resource_path(self, relative_path):
+        try:
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base_path, relative_path)
+
     def create_widgets(self):
-        title_label = tk.Label(self.root, text=f"CYT_YouTube 下載器 v{APP_VERSION}", font=("Arial", 16, "bold"))
-        title_label.pack(pady=10)
+        header_frame = tk.Frame(self.root)
+        header_frame.pack(pady=10)
+        
+        try:
+            logo_img = Image.open(self.resource_path("icon.ico")).resize((32, 32), Image.Resampling.LANCZOS)
+            self.logo_photo = ImageTk.PhotoImage(logo_img)
+            logo_label = tk.Label(header_frame, image=self.logo_photo)
+            logo_label.pack(side="left", padx=10)
+        except Exception:
+            pass
+            
+        title_label = tk.Label(header_frame, text=f"CYT_YouTube 下載器 v{APP_VERSION}", font=("Arial", 16, "bold"))
+        title_label.pack(side="left")
         
         url_frame = tk.Frame(self.root)
         url_frame.pack(fill="x", padx=20, pady=5)
@@ -366,10 +377,14 @@ class YouTubeDownloaderGUI:
                                 os.rename(current_exe_path, old_exe_path)
                                 os.rename(new_exe_path, current_exe_path)
                                 
-                                # 為了防止新舊版 PyInstaller 互相干擾，必須清除繼承的環境變數
+                                # 為了防止新舊版 PyInstaller 互相干擾，必須徹底清除繼承的環境變數與路徑
                                 env = os.environ.copy()
                                 env.pop('_MEIPASS2', None)
                                 env.pop('_MEIPASS', None)
+                                if hasattr(sys, '_MEIPASS'):
+                                    path_list = env.get('PATH', '').split(os.pathsep)
+                                    path_list = [p for p in path_list if p != sys._MEIPASS]
+                                    env['PATH'] = os.pathsep.join(path_list)
                                 
                                 subprocess.Popen([current_exe_path], env=env)
                                 os._exit(0)

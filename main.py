@@ -15,7 +15,7 @@ import shutil
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -365,7 +365,13 @@ class YouTubeDownloaderGUI:
                                     os.remove(old_exe_path)
                                 os.rename(current_exe_path, old_exe_path)
                                 os.rename(new_exe_path, current_exe_path)
-                                subprocess.Popen([current_exe_path])
+                                
+                                # 為了防止新舊版 PyInstaller 互相干擾，必須清除繼承的環境變數
+                                env = os.environ.copy()
+                                env.pop('_MEIPASS2', None)
+                                env.pop('_MEIPASS', None)
+                                
+                                subprocess.Popen([current_exe_path], env=env)
                                 os._exit(0)
                             except Exception as e:
                                 messagebox.showerror("錯誤", f"替換檔案失敗，請檢查權限：\n{e}")

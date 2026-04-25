@@ -15,7 +15,7 @@ import shutil
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "1.2.7"
+APP_VERSION = "1.2.8"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:

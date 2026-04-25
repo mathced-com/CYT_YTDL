@@ -15,7 +15,7 @@ import shutil
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "1.2.10"
+APP_VERSION = "1.2.11"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -408,17 +408,21 @@ class YouTubeDownloaderGUI:
                                     paths = clean_env.get('PATH', '').split(os.pathsep)
                                     clean_env['PATH'] = os.pathsep.join([x for x in paths if x.lower() != p])
                                 
-                                # 使用 DETACHED_PROCESS 建立一個完全獨立的程序樹，切斷與父程序的繼承關係
+                                # 終極重啟方案：透過 cmd.exe 執行延遲啟動
+                                # 1. timeout /t 1：等候一秒，確保父程序完全退出並釋放所有檔案鎖定
+                                # 2. start "" "exe路徑"：以完全獨立的背景進程啟動新程式
+                                # 這是解決 PyInstaller 暫存目錄刪除衝突最穩健的做法
+                                restart_cmd = f'timeout /t 1 /nobreak > NUL && start "" "{current_exe_path}"'
+                                
                                 try:
                                     subprocess.Popen(
-                                        [current_exe_path], 
-                                        env=clean_env, 
+                                        restart_cmd,
+                                        shell=True,
+                                        env=clean_env,
                                         cwd=os.path.dirname(current_exe_path),
-                                        creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-                                        close_fds=True
+                                        creationflags=subprocess.CREATE_NO_WINDOW
                                     )
                                 except Exception:
-                                    # 如果 Popen 失敗，嘗試最後的備案
                                     os.startfile(current_exe_path)
                                     
                                 os._exit(0)

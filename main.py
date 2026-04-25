@@ -15,7 +15,7 @@ import shutil
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "1.2.9"
+APP_VERSION = "1.2.10"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -127,11 +127,14 @@ class YouTubeDownloaderGUI:
         self.url_entry = tk.Entry(url_frame, width=35, font=("Arial", 10))
         self.url_entry.pack(side="left", padx=5, fill="x", expand=True)
         
-        self.analyze_btn = tk.Button(url_frame, text="解析網址", command=self.start_analyze, bg="#2196F3", fg="white", font=("Arial", 10, "bold"))
-        self.analyze_btn.pack(side="left", padx=2)
+        # 按鈕順序：貼上、清除、解析
+        tk.Button(url_frame, text="貼上", command=self.paste_url, font=("Arial", 10), bg="#FFEB3B").pack(side="left", padx=2)
         
         self.clear_btn = tk.Button(url_frame, text="清除網址", command=self.clear_url, font=("Arial", 10))
         self.clear_btn.pack(side="left", padx=2)
+
+        self.analyze_btn = tk.Button(url_frame, text="解析網址", command=self.start_analyze, bg="#2196F3", fg="white", font=("Arial", 10, "bold"))
+        self.analyze_btn.pack(side="left", padx=2)
         
         # 步驟提示
         hint_text = "執行步驟：\n一、貼上Youtube網址\n二、點擊「解析網址」\n三、點擊「開始下載」"
@@ -169,7 +172,8 @@ class YouTubeDownloaderGUI:
         tk.Label(path_frame, text="儲存：", font=("Arial", 12)).pack(side="left")
         self.path_entry = tk.Entry(path_frame, textvariable=self.download_path, width=40, state="readonly", font=("Arial", 10))
         self.path_entry.pack(side="left", padx=5, fill="x", expand=True)
-        tk.Button(path_frame, text="選擇資料夾", command=self.browse_folder).pack(side="left")
+        tk.Button(path_frame, text="選擇資料夾", command=self.browse_folder).pack(side="left", padx=2)
+        tk.Button(path_frame, text="開啟資料夾", command=self.open_download_folder, bg="#9C27B0", fg="white").pack(side="left", padx=2)
         
         status_frame = tk.Frame(bottom_frame)
         status_frame.pack(fill="x", padx=20, pady=5)
@@ -202,6 +206,21 @@ class YouTubeDownloaderGUI:
     def deselect_all(self):
         for var in self.playlist_vars:
             var.set(False)
+
+    def paste_url(self):
+        try:
+            clipboard = self.root.clipboard_get()
+            self.url_entry.delete(0, tk.END)
+            self.url_entry.insert(0, clipboard)
+        except Exception:
+            messagebox.showwarning("貼上失敗", "剪貼簿中沒有可讀取的內容。")
+
+    def open_download_folder(self):
+        path = self.download_path.get()
+        if os.path.exists(path):
+            os.startfile(path)
+        else:
+            messagebox.showerror("錯誤", "找不到指定的資料夾路徑。")
 
     def toggle_pause(self):
         if self.is_paused:

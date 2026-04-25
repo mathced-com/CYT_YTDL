@@ -15,7 +15,7 @@ import shutil
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "1.2.6"
+APP_VERSION = "1.2.7"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -24,8 +24,11 @@ try:
 except ImportError:
     HAS_PIL = False
 
-# 將工作目錄設定為程式所在資料夾
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+# 將工作目錄設定為程式所在資料夾 (如果是打包環境則設定為 exe 所在目錄)
+if getattr(sys, 'frozen', False):
+    os.chdir(os.path.dirname(sys.executable))
+else:
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 class ScrollableFrame(ttk.Frame):
     def __init__(self, container, *args, **kwargs):
@@ -378,6 +381,10 @@ class YouTubeDownloaderGUI:
                                 # 使用 os.startfile 完全等同於使用者親手雙擊檔案，
                                 # 它會透過 Windows Shell 啟動，徹底避免防毒軟體因為父子程序啟動而產生的攔截，
                                 # 同時也不會繼承到任何舊版的暫存工作目錄或污染的環境變數。
+                                # 為了防止環境變數汙染，手動清除當前進程的 PyInstaller 變數，確保新版程式能獨立解壓
+                                for key in ['_MEIPASS2', '_MEIPASS', 'TCL_LIBRARY', 'TK_LIBRARY', 'PYTZ_TZDATADIR']:
+                                    os.environ.pop(key, None)
+                                
                                 try:
                                     os.startfile(current_exe_path)
                                 except AttributeError:

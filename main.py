@@ -15,7 +15,7 @@ import shutil
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "1.2.5"
+APP_VERSION = "1.2.6"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -372,22 +372,17 @@ class YouTubeDownloaderGUI:
                             old_exe_path = current_exe_path + ".old"
                             
                             try:
-                                if os.path.exists(old_exe_path):
-                                    os.remove(old_exe_path)
                                 os.rename(current_exe_path, old_exe_path)
                                 os.rename(new_exe_path, current_exe_path)
                                 
-                                # 為了防止新舊版 PyInstaller 互相干擾，必須徹底清除繼承的環境變數與路徑
-                                env = os.environ.copy()
-                                env.pop('_MEIPASS2', None)
-                                env.pop('_MEIPASS', None)
-                                if hasattr(sys, '_MEIPASS'):
-                                    path_list = env.get('PATH', '').split(os.pathsep)
-                                    path_list = [p for p in path_list if p != sys._MEIPASS]
-                                    env['PATH'] = os.pathsep.join(path_list)
-                                
-                                # 必須指定 cwd，否則新程式會繼承到舊程式的暫存目錄作為工作目錄，導致舊目錄無法被刪除
-                                subprocess.Popen([current_exe_path], cwd=os.path.dirname(current_exe_path), env=env)
+                                # 使用 os.startfile 完全等同於使用者親手雙擊檔案，
+                                # 它會透過 Windows Shell 啟動，徹底避免防毒軟體因為父子程序啟動而產生的攔截，
+                                # 同時也不會繼承到任何舊版的暫存工作目錄或污染的環境變數。
+                                try:
+                                    os.startfile(current_exe_path)
+                                except AttributeError:
+                                    subprocess.Popen([current_exe_path])
+                                    
                                 os._exit(0)
                             except Exception as e:
                                 messagebox.showerror("錯誤", f"替換檔案失敗，請檢查權限：\n{e}")

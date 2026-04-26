@@ -16,7 +16,7 @@ import ssl
 import ctypes
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.0.6"
+APP_VERSION = "2.0.7"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:

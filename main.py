@@ -16,7 +16,7 @@ import ssl
 import ctypes
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.0.9"
+APP_VERSION = "2.0.10"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -395,7 +395,7 @@ class YouTubeDownloaderGUI:
         threading.Thread(target=run_check, daemon=True).start()
 
     def prompt_update(self, latest_version, download_url):
-        if messagebox.askyesno("發現新版本", f"發現新版本 v{latest_version}！\n是否要立即下載並更新？\n\n注意：更新時程式將會自動關閉並重啟。"):
+        if messagebox.askyesno("發現新版本", f"發現新版本 v{latest_version}！\n是否要立即下載並更新？\n\n注意：更新程式後，需手動關閉並重新啟動，才會使用最新版本。"):
             self.perform_update(download_url)
         else:
             self.update_progress_ui(0, "已取消更新", "blue")
@@ -420,7 +420,7 @@ class YouTubeDownloaderGUI:
                 self.root.after(0, lambda: self.update_progress_ui(100, "新版本下載完成！等待確認重啟...", "green"))
                 
                 def ask_restart():
-                    if messagebox.askyesno("更新準備就緒", "新版本已下載完畢！\n\n程式將立刻重新啟動以套用更新。\n\n請問是否立即重啟？"):
+                    if messagebox.askyesno("更新準備就緒", "新版本已下載完畢！\n\n需關閉程式後重新開啟，才會使用最新版本。\n\n請問是否立刻關閉程式？"):
                         if getattr(sys, 'frozen', False):
                             current_exe_path = sys.executable
                             old_exe_path = current_exe_path + ".old"

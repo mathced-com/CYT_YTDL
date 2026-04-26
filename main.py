@@ -16,7 +16,7 @@ import ssl
 import ctypes
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.0.7"
+APP_VERSION = "2.0.8"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -426,45 +426,19 @@ class YouTubeDownloaderGUI:
                             old_exe_path = current_exe_path + ".old"
                             
                             try:
+                                # 嘗試替換檔案
+                                if os.path.exists(old_exe_path):
+                                    try: os.remove(old_exe_path)
+                                    except: pass
+                                
                                 os.rename(current_exe_path, old_exe_path)
                                 os.rename(new_exe_path, current_exe_path)
                                 
-                                # =====================================================================
-                                # 終極更新啟動方案：寫入磁碟的獨立啟動腳本
-                                # 原理：把一個 .bat 腳本寫到永久的資料夾，再用完全脫離的方式執行它。
-                                # 腳本在背景等待 3 秒，確保本程式的 PyInstaller 暫存目錄 (_MEIxxxxx)
-                                # 已被 bootloader 的 C 層清理完畢後，才啟動新版程式。
-                                # 這樣新版程式解壓縮時，就不會再誤用到任何舊的路徑。
-                                # =====================================================================
-                                pid = os.getpid()
-                                exe_dir = os.path.dirname(current_exe_path)
-                                launcher_path = os.path.join(exe_dir, '_cyt_update_launch.bat')
-                                # 以 PID 守候取代固定秒數：確保舊程式完全退出後才啟動新版
-                                bat_content = (
-                                    '@echo off\r\n'
-                                    ':waitloop\r\n'
-                                    f'tasklist /FI "PID eq {pid}" 2>NUL | find "{pid}" >NUL\r\n'
-                                    'if not errorlevel 1 (\r\n'
-                                    '    timeout /t 1 /nobreak > NUL\r\n'
-                                    '    goto waitloop\r\n'
-                                    ')\r\n'
-                                    'timeout /t 2 /nobreak > NUL\r\n'
-                                    f'start "" "{current_exe_path}"\r\n'
-                                    'del "%~f0"\r\n'
-                                )
-                                try:
-                                    with open(launcher_path, 'w', encoding='ascii') as f:
-                                        f.write(bat_content)
-                                    subprocess.Popen(
-                                        ['cmd.exe', '/c', launcher_path],
-                                        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
-                                        close_fds=True
-                                    )
-                                except Exception:
-                                    os.startfile(current_exe_path)
-                                
-                                # 用 root.destroy() 允許 Python 正常退出，讓 PyInstaller bootloader 清理 _MEI 
-                                self.root.after(200, self.root.destroy)
+                                messagebox.showinfo("更新成功", "新版本已替換完成！\n\n請在關閉本視窗後，重新手動執行程式以使用最新版本。")
+                                self.root.destroy()
+                                return
+                            except Exception as e:
+                                messagebox.showerror("錯誤", f"替換檔案失敗，請檢查權限或嘗試手動更新：\n{e}")
                             except Exception as e:
                                 messagebox.showerror("錯誤", f"替換檔案失敗，請檢查權限：\n{e}")
                                 self.update_progress_ui(0, "更新失敗", "red")
@@ -1152,11 +1126,13 @@ class MP3TrimmerTab:
             self.player.resume()
             self.play_btn.config(text="⏸ 暫停")
             self.is_paused = False
+            self._preview_mode = False # 切換回普通播放
             self._start_update_loop()
         else:
             self.player.play()
             self.play_btn.config(text="⏸ 暫停")
             self.is_paused = False
+            self._preview_mode = False # 切換回普通播放
             self._start_update_loop()
 
     def _stop(self):
@@ -1841,19 +1817,20 @@ class MP3MergerTab:
             time_left = dur_current - rel_pos
             has_next = (self._current_song_idx + 1 < len(self.staged_files))
 
-            # ---- 預加載下一首 (fade 或非 fade 都在歌曲快結束時預備) ----
-            PRELOAD_MS = max(fade_ms, 2000)  # 至少提前 2 秒預加載
+            # ---- 預加載下一首 ----
+            PRELOAD_MS = max(fade_ms, 3000)  # 稍微提早一點預加載，確保流暢
             if has_next and time_left <= PRELOAD_MS and not self._next_song_triggered:
                 self._next_song_triggered = True
                 next_idx = self._current_song_idx + 1
                 other_p = self.players[1 - self.active_player_idx]
                 if do_fade:
-                    # 融合模式：預加載且立即播放
                     if other_p.open(self.staged_files[next_idx]):
+                        other_p.set_volume(0) # 融合模式初始音量 0
                         other_p.play()
                 else:
-                    # 非融合模式：預加載但不播放，等切換時才啟
-                    other_p.open(self.staged_files[next_idx])
+                    if other_p.open(self.staged_files[next_idx]):
+                        other_p.set_volume(1000) # 非融合模式確保音量 1000
+                        # 暫不 play
 
             # ---- 融合音量漸變 ----
             if do_fade and self._next_song_triggered and time_left <= fade_ms:
@@ -1861,19 +1838,18 @@ class MP3MergerTab:
                 try:
                     p_active.set_volume(int(fade_ratio * 1000))
                     self.players[1 - self.active_player_idx].set_volume(int((1.0 - fade_ratio) * 1000))
-                except Exception:
-                    pass
+                except Exception: pass
 
             # ---- 當前歌曲結束：切換主播放器 ----
-            if time_left <= 80:
+            if time_left <= 120: # 稍微調大容錯，減少卡頓感
                 if self._next_song_triggered:
                     try:
                         self.players[1 - self.active_player_idx].set_volume(1000)
-                    except Exception:
-                        pass
+                    except Exception: pass
+                    
                     if not do_fade:
-                        # 非融合模式：現在才啟始播放預加載的歌曲
                         self.players[1 - self.active_player_idx].play()
+                        
                     self.active_player_idx = 1 - self.active_player_idx
                     self._current_song_idx += 1
                     self._next_song_triggered = False

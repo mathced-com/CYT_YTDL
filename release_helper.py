@@ -88,8 +88,20 @@ def main():
     subprocess.run(["py", "-3", "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed", "--icon=icon.ico", "--add-data", "icon.ico;.", "--name", "CYT_YTDL", "main.py"])
     
     exe_path = os.path.join("dist", "CYT_YTDL.exe")
+    zip_path = os.path.join("dist", "CYT_YTDL.zip")
     if not os.path.exists(exe_path):
         print(f"\n[Error] 打包失敗，找不到 {exe_path}")
+        input("請按 Enter 鍵結束...")
+        return
+
+    print("\n[3.5/6] 正在將執行檔壓縮為 ZIP (防毒軟體友好型)...")
+    try:
+        import zipfile
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(exe_path, os.path.basename(exe_path))
+        print(f"      [OK] 壓縮完成: {zip_path}")
+    except Exception as e:
+        print(f"      [Error] 壓縮失敗: {e}")
         input("請按 Enter 鍵結束...")
         return
 
@@ -98,17 +110,17 @@ def main():
     subprocess.run(["git", "commit", "-m", f"發布新版本 v{new_version}: {update_notes}"])
     subprocess.run(["git", "push"])
     
-    print("\n[5/6] 正在自動建立 GitHub Release 並將 CYT_YTDL.exe 上傳至雲端...")
-    print("      (檔案有點大，上傳可能需要幾十秒鐘，請勿關閉視窗)")
+    print("\n[5/6] 正在自動建立 GitHub Release 並將 CYT_YTDL.zip 上傳至雲端...")
+    print("      (壓縮檔能降低防毒軟體報錯機率，請稍候)")
     result = subprocess.run([
         "gh", "release", "create", f"v{new_version}", 
-        exe_path, 
+        zip_path, 
         "--title", f"v{new_version}", 
         "--notes", update_notes
     ], capture_output=True, text=True, encoding='utf-8', errors='ignore')
     
     if result.returncode == 0:
-        print("\n[Success] 發布成功！檔案已由程式幫您自動上傳完畢！")
+        print("\n[Success] 發布成功！ZIP 壓縮檔已由程式幫您自動上傳完畢！")
         print("\n[6/6] 正在為您開啟最終的發布網頁以供確認...")
         release_url = f"https://github.com/mathced-com/CYT_YTDL/releases/tag/v{new_version}"
         webbrowser.open(release_url)

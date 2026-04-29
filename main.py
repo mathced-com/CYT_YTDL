@@ -16,7 +16,7 @@ import ssl
 import ctypes
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.1.1"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -371,7 +371,7 @@ class YouTubeDownloaderGUI:
                     assets = data.get("assets", [])
                     download_url = None
                     for asset in assets:
-                        if asset.get("name") == "CYT_YTDL.exe":
+                        if asset.get("name") == "CYT_YTDL.zip":
                             download_url = asset.get("browser_download_url")
                             break
                             
@@ -413,11 +413,32 @@ class YouTubeDownloaderGUI:
                         percent = min(100.0, (readsofar / totalsize) * 100)
                         self.root.after(0, lambda: self.update_progress_ui(percent, f"正在下載新版本... ({percent:.1f}%)", "orange"))
 
+                new_zip_name = "CYT_YTDL_update.zip"
+                new_zip_path = os.path.join(self.app_dir, new_zip_name)
                 new_exe_name = "CYT_YTDL_update.exe"
                 new_exe_path = os.path.join(self.app_dir, new_exe_name)
-                urllib.request.urlretrieve(download_url, new_exe_path, reporthook=reporthook)
                 
-                self.root.after(0, lambda: self.update_progress_ui(100, "新版本下載完成！等待確認重啟...", "green"))
+                # 1. 下載 ZIP
+                urllib.request.urlretrieve(download_url, new_zip_path, reporthook=reporthook)
+                
+                # 2. 解壓縮
+                self.root.after(0, lambda: self.update_progress_ui(100, "下載完成，正在解壓縮...", "orange"))
+                try:
+                    with zipfile.ZipFile(new_zip_path, 'r') as zip_ref:
+                        # 尋找 ZIP 內的 exe
+                        for name in zip_ref.namelist():
+                            if name.lower().endswith('.exe'):
+                                with zip_ref.open(name) as zf, open(new_exe_path, 'wb') as f:
+                                    shutil.copyfileobj(zf, f)
+                                break
+                    # 刪除暫存的 ZIP
+                    if os.path.exists(new_zip_path):
+                        os.remove(new_zip_path)
+                except Exception as e:
+                    self.root.after(0, lambda: messagebox.showerror("錯誤", f"解壓縮更新檔失敗：\n{e}"))
+                    return
+
+                self.root.after(0, lambda: self.update_progress_ui(100, "新版本準備就緒！等待確認重啟...", "green"))
                 
                 def ask_restart():
                     if messagebox.askyesno("更新準備就緒", "新版本已下載完畢！\n\n需關閉程式後重新開啟，才會使用最新版本。\n\n請問是否立刻關閉程式？"):

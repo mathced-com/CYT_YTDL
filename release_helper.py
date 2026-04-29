@@ -110,17 +110,18 @@ def main():
     subprocess.run(["git", "commit", "-m", f"發布新版本 v{new_version}: {update_notes}"])
     subprocess.run(["git", "push"])
     
-    print("\n[5/6] 正在自動建立 GitHub Release 並將 CYT_YTDL.zip 上傳至雲端...")
-    print("      (壓縮檔能降低防毒軟體報錯機率，請稍候)")
+    print("\n[5/6] 正在自動建立 GitHub Release 並同時上傳 EXE 與 ZIP (相容舊版更新)...")
+    print("      (檔案較大且包含兩種格式，上傳可能需要 1~2 分鐘，請勿關閉視窗)")
     result = subprocess.run([
         "gh", "release", "create", f"v{new_version}", 
-        zip_path, 
+        exe_path, 
+        zip_path,
         "--title", f"v{new_version}", 
         "--notes", update_notes
     ], capture_output=True, text=True, encoding='utf-8', errors='ignore')
     
     if result.returncode == 0:
-        print("\n[Success] 發布成功！ZIP 壓縮檔已由程式幫您自動上傳完畢！")
+        print("\n[Success] 發布成功！EXE 與 ZIP 檔案皆已自動上傳完畢！")
         print("\n[6/6] 正在為您開啟最終的發布網頁以供確認...")
         release_url = f"https://github.com/mathced-com/CYT_YTDL/releases/tag/v{new_version}"
         webbrowser.open(release_url)

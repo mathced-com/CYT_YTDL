@@ -14,9 +14,10 @@ import zipfile
 import shutil
 import ssl
 import ctypes
+import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.1.2"
+APP_VERSION = "2.2.0"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -56,7 +57,7 @@ class ScrollableFrame(ttk.Frame):
 class YouTubeDownloaderGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"CYT_YouTube 下載器 v{APP_VERSION}")
+        self.root.title(f"CYT_網路影音下載器 v{APP_VERSION}")
         self.root.geometry("850x700")
         self.root.resizable(False, False)
         
@@ -84,8 +85,13 @@ class YouTubeDownloaderGUI:
         self.video_info = None
         self.is_playlist = False
         
-        self.playlist_vars = []
-        self.playlist_entries = []
+        self.playlist_all_vars = []
+        self.playlist_all_entries = []
+        self.playlist_current_page = 0
+        
+        # 載入持久化配置
+        self.config_path = os.path.join(self.app_dir, "config.json")
+        self.load_config()
         
         # 暫停與取消狀態標記
         self.is_paused = False
@@ -94,6 +100,12 @@ class YouTubeDownloaderGUI:
         self.create_widgets()
         self.update_quality_options()
         
+        # 如果配置中有舊的品質設定，嘗試套用
+        conf = self._get_config_data()
+        if conf.get("quality_choice"):
+            if conf["quality_choice"] in self.quality_combo['values']:
+                self.quality_choice.set(conf["quality_choice"])
+
         self.check_ffmpeg_environment()
         
         if not HAS_PIL:
@@ -105,6 +117,41 @@ class YouTubeDownloaderGUI:
         except Exception:
             base_path = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(base_path, relative_path)
+
+    def load_config(self):
+        default_dl_dir = os.path.join(self.app_dir, "download")
+        data = self._get_config_data()
+        
+        self.download_path = tk.StringVar(value=data.get("download_path", default_dl_dir))
+        self.format_choice = tk.StringVar(value=data.get("format_choice", "mp4"))
+        self.quality_choice = tk.StringVar(value=data.get("quality_choice", ""))
+        self.cookie_browser = tk.StringVar(value=data.get("cookie_browser", "無"))
+        self.cookie_file_path = tk.StringVar(value=data.get("cookie_file_path", ""))
+        self.url_entry_var = tk.StringVar()
+        self.url_entry_var.trace_add("write", self.on_url_change)
+
+    def _get_config_data(self):
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {}
+
+    def save_config(self, *args):
+        data = {
+            "download_path": self.download_path.get(),
+            "format_choice": self.format_choice.get(),
+            "quality_choice": self.quality_choice.get(),
+            "cookie_browser": self.cookie_browser.get(),
+            "cookie_file_path": self.cookie_file_path.get()
+        }
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+        except Exception:
+            pass
 
     def _on_tab_changed(self, event):
         sel = self.notebook.select()
@@ -128,7 +175,7 @@ class YouTubeDownloaderGUI:
         except Exception:
             pass
             
-        tk.Label(header_frame, text=f"CYT_YouTube 下載器 v{APP_VERSION}", font=("Arial", 18, "bold"), bg="white").pack(side="left")
+        tk.Label(header_frame, text=f"CYT_網路影音下載器 v{APP_VERSION}", font=("Arial", 18, "bold"), bg="white").pack(side="left")
 
         # === 標簿頁 (Notebook) ===
         self.notebook = ttk.Notebook(self.root)
@@ -136,7 +183,7 @@ class YouTubeDownloaderGUI:
         
         # Tab 1: YouTube 下載器
         tab_download = tk.Frame(self.notebook)
-        self.notebook.add(tab_download, text="  ⬇️ YouTube 下載器  ")
+        self.notebook.add(tab_download, text="  ⬇️ 影音下載器  ")
         
         # Tab 2: MP3 裁剪工具
         tab_trim = tk.Frame(self.notebook)
@@ -170,7 +217,7 @@ class YouTubeDownloaderGUI:
         self.analyze_btn.pack(side="left", padx=2)
         
         # 步驟提示
-        hint_text = "執行步驟：\n一、貼上Youtube網址\n二、點擊「解析網址」\n三、點擊「開始下載」"
+        hint_text = "執行步驟：\n一、貼上影音來源網址\n二、點擊「解析網址」\n三、點擊「開始下載」"
         hint_label = tk.Label(url_frame, text=hint_text, fg="#E91E63", font=("Arial", 9, "bold"), justify="left")
         hint_label.pack(side="left", padx=5)
         
@@ -187,6 +234,18 @@ class YouTubeDownloaderGUI:
         self.select_btn_frame = tk.Frame(self.info_frame)
         tk.Button(self.select_btn_frame, text="全部勾選", command=self.select_all, font=("Arial", 10), bg="#4CAF50", fg="white").pack(side="left", padx=5)
         tk.Button(self.select_btn_frame, text="取消全選", command=self.deselect_all, font=("Arial", 10)).pack(side="left", padx=5)
+        
+        # 分頁控制
+        self.prev_btn = tk.Button(self.select_btn_frame, text="◀ 上一頁", command=self.prev_page, font=("Arial", 9))
+        self.prev_btn.pack(side="left", padx=10)
+        self.page_label = tk.Label(self.select_btn_frame, text="第 1 / 1 頁", font=("Arial", 9, "bold"))
+        self.page_label.pack(side="left")
+        self.next_btn = tk.Button(self.select_btn_frame, text="下一頁 ▶", command=self.next_page, font=("Arial", 9))
+        self.next_btn.pack(side="left", padx=10)
+
+        self.selection_label = tk.Label(self.select_btn_frame, text="已勾選: 0 / 0", font=("Arial", 10, "bold"), fg="#E91E63")
+        self.selection_label.pack(side="left", padx=15)
+        
         self.select_btn_frame.pack(pady=3)
         self.select_btn_frame.pack_forget()
         
@@ -195,12 +254,15 @@ class YouTubeDownloaderGUI:
         format_frame = tk.Frame(bottom_frame)
         format_frame.pack(fill="x", padx=15, pady=3)
         tk.Label(format_frame, text="格式：", font=("Arial", 12)).pack(side="left")
-        tk.Radiobutton(format_frame, text="MP4", variable=self.format_choice, value="mp4", command=self.update_quality_options).pack(side="left", padx=2)
-        tk.Radiobutton(format_frame, text="MP3", variable=self.format_choice, value="mp3", command=self.update_quality_options).pack(side="left", padx=2)
+        tk.Radiobutton(format_frame, text="MP4", variable=self.format_choice, value="mp4", command=self.on_format_change).pack(side="left", padx=2)
+        tk.Radiobutton(format_frame, text="MKV", variable=self.format_choice, value="mkv", command=self.on_format_change).pack(side="left", padx=2)
+        tk.Radiobutton(format_frame, text="MP3", variable=self.format_choice, value="mp3", command=self.on_format_change).pack(side="left", padx=2)
+        tk.Radiobutton(format_frame, text="WAV", variable=self.format_choice, value="wav", command=self.on_format_change).pack(side="left", padx=2)
         
         tk.Label(format_frame, text="   品質：", font=("Arial", 12)).pack(side="left")
         self.quality_combo = ttk.Combobox(format_frame, textvariable=self.quality_choice, state="readonly", width=18)
         self.quality_combo.pack(side="left", padx=5)
+        self.quality_combo.bind("<<ComboboxSelected>>", self.save_config)
         
         path_frame = tk.Frame(bottom_frame)
         path_frame.pack(fill="x", padx=15, pady=3)
@@ -209,6 +271,20 @@ class YouTubeDownloaderGUI:
         self.path_entry.pack(side="left", padx=5, fill="x", expand=True)
         tk.Button(path_frame, text="選擇", command=self.browse_folder).pack(side="left", padx=2)
         tk.Button(path_frame, text="開啟", command=self.open_download_folder, bg="#9C27B0", fg="white").pack(side="left", padx=2)
+        
+        # Cookies 來源設定
+        cookie_frame = tk.Frame(bottom_frame)
+        cookie_frame.pack(fill="x", padx=15, pady=3)
+        tk.Label(cookie_frame, text="Cookies 來源：", font=("Arial", 10)).pack(side="left")
+        self.cookie_browser_combo = ttk.Combobox(cookie_frame, textvariable=self.cookie_browser, state="readonly", width=16)
+        self.cookie_browser_combo['values'] = ["無", "chrome", "edge", "選擇 .txt 檔案..."]
+        self.cookie_browser_combo.pack(side="left", padx=5)
+        self.cookie_browser_combo.bind("<<ComboboxSelected>>", self.on_cookie_browser_change)
+        
+        self.cookie_tip_label = tk.Label(cookie_frame, text="(下載私人/限定影片時必備)", font=("Arial", 8), fg="gray")
+        self.cookie_tip_label.pack(side="left")
+        
+        tk.Button(cookie_frame, text="💡 FB/私人影片下載教學", font=("Arial", 8), command=self.show_fb_tutorial, fg="#1976D2", relief="flat", cursor="hand2").pack(side="left", padx=10)
         
         status_frame = tk.Frame(bottom_frame)
         status_frame.pack(fill="x", padx=15, pady=3)
@@ -235,12 +311,19 @@ class YouTubeDownloaderGUI:
         tk.Button(btn_frame, text="檢查主程式更新", command=self.check_app_update, bg="#FF9800", fg="white").pack(side="left", padx=5)
 
     def select_all(self):
-        for var in self.playlist_vars:
+        for var in self.playlist_all_vars:
             var.set(True)
+        self.update_selection_count()
             
     def deselect_all(self):
-        for var in self.playlist_vars:
+        for var in self.playlist_all_vars:
             var.set(False)
+        self.update_selection_count()
+
+    def update_selection_count(self):
+        total = len(self.playlist_all_vars)
+        selected = sum(1 for var in self.playlist_all_vars if var.get())
+        self.selection_label.config(text=f"已勾選: {selected} / {total}")
 
     def paste_url(self):
         try:
@@ -275,10 +358,58 @@ class YouTubeDownloaderGUI:
             self.cancel_btn.config(state="disabled")
             self.pause_btn.config(state="disabled")
 
-    def update_quality_options(self):
-        if self.format_choice.get() == "mp4":
-            options = ["最高畫質 (自動)", "1080p", "720p", "480p", "360p"]
+    def on_cookie_browser_change(self, event=None):
+        if self.cookie_browser.get() == "選擇 .txt 檔案...":
+            f = filedialog.askopenfilename(filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
+            if f:
+                self.cookie_file_path.set(f)
+                self.save_config()
+                messagebox.showinfo("成功", f"已載入 Cookies 檔案：\n{os.path.basename(f)}")
+            else:
+                self.cookie_browser.set("無")
         else:
+            self.save_config()
+
+    def on_url_change(self, *args):
+        url = self.url_entry.get().strip().lower()
+        if not url:
+            self.cookie_tip_label.config(text="(下載私人/限定影片時必備)", fg="gray")
+            return
+            
+        if "facebook.com" in url or "fb.watch" in url or "reel" in url:
+            self.cookie_tip_label.config(text="💡 偵測到 FB 網址：建議用「.txt 檔案」載入 Cookies 確保成功。", fg="#D32F2F")
+        elif "instagram.com" in url:
+            self.cookie_tip_label.config(text="💡 偵測到 IG 網址：建議開啟 Cookies 支援。", fg="#C2185B")
+        elif "youtube.com" in url or "youtu.be" in url:
+            self.cookie_tip_label.config(text="💡 YouTube 影片通常選「無」即可順暢下載。", fg="#388E3C")
+        elif "douyin.com" in url or "tiktok.com" in url:
+            self.cookie_tip_label.config(text="⚠️ 抖音強制要求 Cookies 解析：請務必載入 .txt 檔案！", fg="#D32F2F")
+        else:
+            self.cookie_tip_label.config(text="(下載私人/限定影片時必備)", fg="gray")
+
+    def show_fb_tutorial(self):
+        tutorial = (
+            "【Facebook 私人/限動影片下載指南】\n\n"
+            "1. 在瀏覽器安裝外掛「Get cookies.txt LOCALLY」。\n"
+            "2. 在瀏覽器打開 FB 並確認已登入。\n"
+            "3. 點擊外掛圖示，點選「Export」下載 .txt 檔案。\n"
+            "4. 在本程式「Cookies 來源」選「選擇 .txt 檔案...」並載入該檔。\n"
+            "5. 貼上網址後即可解析下載。\n\n"
+            "※ 提示：使用 .txt 檔案不需要關閉瀏覽器，且成功率最高！"
+        )
+        messagebox.showinfo("下載教學", tutorial)
+
+    def on_format_change(self):
+        self.update_quality_options()
+        self.save_config()
+
+    def update_quality_options(self):
+        fmt = self.format_choice.get()
+        if fmt in ["mp4", "mkv"]:
+            options = ["最高畫質 (自動)", "1080p", "720p", "480p", "360p"]
+        elif fmt == "wav":
+            options = ["無損音質 (WAV)"]
+        else: # mp3
             options = ["最高音質 (320k)", "標準音質 (192k)", "普通音質 (128k)"]
         self.quality_combo['values'] = options
         self.quality_combo.current(0)
@@ -287,6 +418,7 @@ class YouTubeDownloaderGUI:
         folder = filedialog.askdirectory(initialdir=self.download_path.get())
         if folder:
             self.download_path.set(folder)
+            self.save_config()
 
     def update_ytdlp(self):
         # 如果是打包好的 exe 版本，yt-dlp 已經被封裝在裡面，無法透過 pip 單獨更新
@@ -341,7 +473,8 @@ class YouTubeDownloaderGUI:
                                 shutil.copyfileobj(zf, f)
                 self.root.after(0, lambda: self.update_progress_ui(0, "元件配置完成，可以開始使用！", "green"))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("錯誤", f"FFmpeg 下載失敗：\n{e}"))
+                err_str = str(e)
+                self.root.after(0, lambda: messagebox.showerror("錯誤", f"FFmpeg 下載失敗：\n{err_str}"))
                 self.root.after(0, lambda: self.update_progress_ui(0, "環境不完整，可能無法進行影片轉檔", "red"))
             finally:
                 if os.path.exists(zip_path):
@@ -479,7 +612,8 @@ class YouTubeDownloaderGUI:
                 self.root.after(0, ask_restart)
                 
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("錯誤", f"更新失敗：\n{e}"))
+                err_str = str(e)
+                self.root.after(0, lambda: messagebox.showerror("錯誤", f"更新失敗：\n{err_str}"))
                 self.root.after(0, lambda: self.update_progress_ui(0, "更新失敗", "red"))
                 self.root.after(0, lambda: self.download_btn.config(state="normal" if self.video_info else "disabled"))
                 self.root.after(0, lambda: self.analyze_btn.config(state="normal"))
@@ -517,52 +651,176 @@ class YouTubeDownloaderGUI:
         import urllib.parse
         parsed_url = urllib.parse.urlparse(url)
         query_params = urllib.parse.parse_qs(parsed_url.query)
-        if 'list' in query_params:
+        if 'list' in query_params and 'youtube.com' in parsed_url.netloc:
             playlist_id = query_params['list'][0]
             # YT Mix (合輯) 的清單 ID 通常以 RD 開頭，這種清單不能直接轉換為 /playlist?list= 否則會報錯
             if not playlist_id.startswith("RD"):
                 url = f"https://www.youtube.com/playlist?list={playlist_id}"
+                
+        # 預解析網址：追蹤重定向 (處理 FB share 或短網址)
+        if "facebook.com" in url or "douyin.com" in url or "t.co" in url or "bit.ly" in url:
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'}
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    url = response.geturl()
+                # 重新解析 query 以便後續處理
+                parsed_url = urllib.parse.urlparse(url)
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+            except:
+                pass
+
+        # 抖音網址優化處理 (強化參數提取)
+        if "douyin.com" in url:
+            # 優先搜尋 modal_id 參數
+            match = re.search(r'modal_id=(\d+)', url)
+            if match:
+                url = f"https://www.douyin.com/video/{match.group(1)}"
+            elif "/jingxuan" in url or "/video/" in url:
+                # 確保網址格式正確
+                pass
 
         ydl_opts = {
-            'extract_flat': True, 
-            'quiet': True
+            'extract_flat': False, # 單一影片改用深層解析以應對加密
+            'quiet': True,
+            'no_warnings': True,
+            'nocheckcertificate': True,
+            'socket_timeout': 15,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         }
+        
+        # 抖音額外優化 (深度偽裝)
+        if "douyin.com" in url:
+            ydl_opts['http_headers'] = {
+                'Referer': url,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                'Sec-Ch-Ua-Mobile': '?0',
+                'Sec-Ch-Ua-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'same-origin',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1',
+            }
+
+        # 增加 Cookies 支援
+        browser_choice = self.cookie_browser.get()
+        use_cookies = False
+        if browser_choice == "選擇 .txt 檔案...":
+            cookie_file = self.cookie_file_path.get()
+            if os.path.exists(cookie_file):
+                ydl_opts['cookiefile'] = cookie_file
+                use_cookies = True
+        elif browser_choice != "無":
+            ydl_opts['cookiesfrombrowser'] = (browser_choice,)
+            use_cookies = True
+
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+            except Exception as e:
+                # 智慧降級：如果帶 Cookies 失敗，嘗試不帶 Cookies 重解析
+                if use_cookies:
+                    temp_opts = ydl_opts.copy()
+                    if 'cookiefile' in temp_opts: del temp_opts['cookiefile']
+                    if 'cookiesfrombrowser' in temp_opts: del temp_opts['cookiesfrombrowser']
+                    with yt_dlp.YoutubeDL(temp_opts) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                        # 如果無 Cookies 成功了，發送提示
+                        self.root.after(0, lambda: self.update_progress_ui(0, "Cookies 解析受阻，已自動切換至相容模式解析成功", "orange"))
+                else:
+                    raise e
+                    
             self.video_info = info
             
             if 'entries' in info:
                 self.is_playlist = True
                 entries = list(info.get('entries') or [])
                 total = len(entries)
+                self.playlist_all_entries = entries
+                self.playlist_all_vars = [tk.BooleanVar(value=True) for _ in range(total)]
+                self.playlist_current_page = 0
+                
                 if total > 50:
                     def ask_playlist_action():
-                        msg = f"偵測到龐大的播放清單 (共 {total} 部影片)！\n\n請選擇後續動作：\n\n【是】載入前 50 筆清單讓我手動勾選。\n【否】不展開清單，直接下載全部。\n【取消】取消解析。"
-                        res = messagebox.askyesnocancel("播放清單處理方式", msg)
-                        if res is True:
-                            self.show_playlist(info.get('title', '播放清單'), entries[:50])
-                        elif res is False:
-                            self.show_playlist_summary(info.get('title', '播放清單'), entries)
-                        else:
-                            self.update_progress_ui(0, "已取消解析", "blue")
-                            self.analyze_btn.config(state="normal")
-                            self.title_label.config(text="請輸入網址並點選「解析網址」")
+                        # 建立自定義彈窗以支援「1」與「2」按鈕
+                        dialog = tk.Toplevel(self.root)
+                        dialog.title("播放清單處理方式")
+                        dialog.geometry("450x250")
+                        dialog.resizable(False, False)
+                        dialog.transient(self.root)
+                        dialog.grab_set()
+                        
+                        # 讓視窗置中
+                        dialog.update_idletasks()
+                        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
+                        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
+                        dialog.geometry(f"+{x}+{y}")
+
+                        msg = f"偵測到龐大的播放清單 (共 {total} 部影片)！\n\n請選擇後續動作：\n\n【 1 】載入前 50 筆清單讓我手動勾選。\n【 2 】分頁顯示全部清單進行勾選。\n【取消】取消解析。"
+                        tk.Label(dialog, text=msg, justify="left", font=("Arial", 11), padx=20, pady=20).pack()
+
+                        btn_frame = tk.Frame(dialog)
+                        btn_frame.pack(side="bottom", pady=20)
+
+                        def on_choice(choice):
+                            dialog.destroy()
+                            if choice in [1, 2]:
+                                self.root.after(0, lambda: self.show_playlist(0))
+                            else:
+                                self.update_progress_ui(0, "已取消解析", "blue")
+                                self.analyze_btn.config(state="normal")
+                                self.title_label.config(text="請輸入網址並點選「解析網址」")
+
+                        tk.Button(btn_frame, text=" 1 ", width=10, command=lambda: on_choice(1), font=("Arial", 10, "bold"), bg="#2196F3", fg="white").pack(side="left", padx=10)
+                        tk.Button(btn_frame, text=" 2 ", width=10, command=lambda: on_choice(2), font=("Arial", 10, "bold"), bg="#4CAF50", fg="white").pack(side="left", padx=10)
+                        tk.Button(btn_frame, text="取消", width=10, command=lambda: on_choice(0)).pack(side="left", padx=10)
+
                     self.root.after(0, ask_playlist_action)
                 else:
-                    self.root.after(0, lambda: self.show_playlist(info.get('title', '播放清單'), entries))
+                    self.root.after(0, lambda: self.show_playlist(0))
             else:
                 self.is_playlist = False
-                title = info.get('title', '未知影片標題')
+                # 優先從多個欄位尋找標題
+                title = info.get('title') or info.get('fulltitle') or f"影片_{info.get('id', '未知')}"
                 dur_str = self.format_duration(info.get('duration'))
+                
+                # 優先從多個欄位尋找圖片
                 thumb_url = info.get('thumbnail')
+                if not thumb_url and info.get('thumbnails'):
+                    thumb_url = info['thumbnails'][-1].get('url') # 抓最後一張通常最大
+                    
                 self.root.after(0, lambda: self.show_single_video(title, dur_str, thumb_url))
                 
         except Exception as e:
-            self.root.after(0, lambda: self.title_label.config(text="解析失敗，請確認網址是否正確。"))
-            self.root.after(0, lambda: self.update_progress_ui(0, "發生錯誤", "red"))
-            self.root.after(0, lambda: messagebox.showerror("錯誤", f"解析失敗：\n{str(e)}"))
+            err_str = str(e)
+            # 抖音專屬中文提示優化
+            if "douyin" in url and "Fresh cookies" in err_str:
+                msg = (
+                    "抖音目前加強了防抓取機制，偵測到您尚未登入或 IP 異常。\n\n"
+                    "建議處理方式：\n"
+                    "1. 請在瀏覽器中「重新播放一次」該影片（觸發網站更新驗證）。\n"
+                    "2. 重新匯出最新的 .txt Cookies 檔案。\n"
+                    "3. 確保程式採用『選擇 .txt 檔案』的方式載入後再進行解析。"
+                )
+                self.root.after(0, lambda: messagebox.showwarning("抖音解析提示", msg))
+                self.root.after(0, lambda: self.update_progress_ui(0, "需要最新的 Cookies 才能解析", "red"))
+            elif "login.php" in err_str or "facebook.com/login" in err_str:
+                msg = (
+                    "此影片可能為私人影片或限時動態，且目前的 Cookies 已失效或權限不足。\n\n"
+                    "建議處理方式：\n"
+                    "1. 請在瀏覽器中「重新播放一次」該影片（確認可正常收看）。\n"
+                    "2. 重新匯出最新的 .txt Cookies 檔案後再嘗試解析。"
+                )
+                self.root.after(0, lambda: messagebox.showwarning("FB 解析提示", msg))
+                self.root.after(0, lambda: self.update_progress_ui(0, "FB 登入失效，請更新 Cookies", "red"))
+            else:
+                self.root.after(0, lambda: self.title_label.config(text="解析失敗，請確認網址是否正確。"))
+                self.root.after(0, lambda: self.update_progress_ui(0, "發生錯誤", "red"))
+                self.root.after(0, lambda: messagebox.showerror("錯誤", f"解析失敗：\n{err_str}"))
         finally:
             self.root.after(0, lambda: self.analyze_btn.config(state="normal"))
 
@@ -597,8 +855,15 @@ class YouTubeDownloaderGUI:
         for widget in self.list_frame.scrollable_frame.winfo_children():
             widget.destroy()
             
+        # 對於單一影片，固定高度並隱藏捲軸
         self.list_frame.pack(fill="both", expand=True, padx=10, pady=5)
-        row_frame = tk.Frame(self.list_frame.scrollable_frame, pady=5)
+        self.list_frame.canvas.config(height=150) 
+        try:
+            self.list_frame.scrollbar.pack_forget() # 隱藏捲軸
+        except:
+            pass
+        
+        row_frame = tk.Frame(self.list_frame.scrollable_frame, pady=15)
         row_frame.pack(fill="x", anchor="w")
         
         thumb_label = tk.Label(row_frame, text="無圖片", bg="#e0e0e0", width=14, height=3)
@@ -608,35 +873,67 @@ class YouTubeDownloaderGUI:
         txt_label.pack(side="left", anchor="w", padx=10)
         
         if HAS_PIL and thumb_url:
+            # 處理 Bilibili 可能缺少的協定頭
+            if thumb_url.startswith("//"):
+                thumb_url = "https:" + thumb_url
             threading.Thread(target=self.load_thumbnail, args=(thumb_url, thumb_label), daemon=True).start()
         
         self.update_progress_ui(0, "解析完成！請確認資訊後點擊「開始下載」", "green")
         self.download_btn.config(state="normal")
+        
+        # 強制更新捲動區域，解決預覽消失問題
+        self.root.after(100, lambda: self.list_frame.canvas.configure(scrollregion=self.list_frame.canvas.bbox("all")))
 
-    def show_playlist(self, title, entries):
-        self.title_label.config(text=f"【播放清單】\n{title} (共 {len(entries)} 部影片)")
+    def show_playlist(self, page=0):
+        title = self.video_info.get('title', '播放清單')
+        total_items = len(self.playlist_all_entries)
+        total_pages = math.ceil(total_items / 50)
+        self.playlist_current_page = page
+        
+        self.title_label.config(text=f"【播放清單】\n{title} (共 {total_items} 部影片)")
+        self.page_label.config(text=f"第 {page + 1} / {total_pages} 頁")
+        
+        # 控制翻頁按鈕可用性
+        self.prev_btn.config(state="normal" if page > 0 else "disabled")
+        self.next_btn.config(state="normal" if page < total_pages - 1 else "disabled")
         
         for widget in self.list_frame.scrollable_frame.winfo_children():
             widget.destroy()
             
-        self.playlist_vars.clear()
-        self.playlist_entries = entries
+        self.select_btn_frame.pack(pady=3)
+        self.list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        try:
+            self.list_frame.scrollbar.pack(side="right", fill="y") # 確保捲軸在清單模式下出現
+        except:
+            pass
         
-        for i, entry in enumerate(entries):
-            var = tk.BooleanVar(value=True)
-            self.playlist_vars.append(var)
+        start_idx = page * 50
+        end_idx = min(start_idx + 50, total_items)
+        
+        # 開始漸進式渲染
+        self.update_progress_ui(0, "正在載入清單項目...", "blue")
+        self._render_batch(start_idx, end_idx, start_idx)
+
+    def _render_batch(self, start, end, current):
+        # 每次渲染 5 筆
+        batch_size = 5
+        batch_end = min(current + batch_size, end)
+        
+        for i in range(current, batch_end):
+            entry = self.playlist_all_entries[i]
+            var = self.playlist_all_vars[i]
             
             row_frame = tk.Frame(self.list_frame.scrollable_frame, pady=3)
             row_frame.pack(fill="x", anchor="w")
             
-            chk = tk.Checkbutton(row_frame, variable=var)
+            chk = tk.Checkbutton(row_frame, variable=var, command=self.update_selection_count)
             chk.pack(side="left", padx=5)
             
-            thumb_label = tk.Label(row_frame, text="無圖片", bg="#e0e0e0", width=14, height=3)
+            thumb_label = tk.Label(row_frame, text="等候中", bg="#e0e0e0", width=14, height=3)
             thumb_label.pack(side="left", padx=5)
             
             dur_str = self.format_duration(entry.get('duration'))
-            title_text = entry.get('title', f'隱藏影片 {i+1}')
+            title_text = entry.get('title', f'影片 {i+1}')
             txt_label = tk.Label(row_frame, text=f"{i+1}. {title_text}\n時間: {dur_str.strip() if dur_str else '未知'}", justify="left", wraplength=450, font=("Arial", 10))
             txt_label.pack(side="left", anchor="w")
             
@@ -647,11 +944,23 @@ class YouTubeDownloaderGUI:
                 if url:
                     threading.Thread(target=self.load_thumbnail, args=(url, thumb_label), daemon=True).start()
 
-        self.select_btn_frame.pack(pady=3)
-        self.list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        self.update_selection_count()
         
-        self.update_progress_ui(0, "解析完成！請勾選想下載的集數，點擊「開始下載」", "green")
-        self.download_btn.config(state="normal")
+        if batch_end < end:
+            # 繼續下一批
+            self.root.after(10, lambda: self._render_batch(start, end, batch_end))
+        else:
+            self.update_progress_ui(0, "解析完成！您可以切換分頁進行勾選。", "green")
+            self.download_btn.config(state="normal")
+
+    def prev_page(self):
+        if self.playlist_current_page > 0:
+            self.show_playlist(self.playlist_current_page - 1)
+
+    def next_page(self):
+        total_pages = math.ceil(len(self.playlist_all_entries) / 50)
+        if self.playlist_current_page < total_pages - 1:
+            self.show_playlist(self.playlist_current_page + 1)
 
     def load_thumbnail(self, url, label):
         try:
@@ -707,16 +1016,13 @@ class YouTubeDownloaderGUI:
         
         urls_to_download = []
         if self.is_playlist:
-            if not self.playlist_vars:
-                # 總結模式：全部下載
-                selected_indices = list(range(len(self.playlist_entries)))
-            else:
-                selected_indices = [i for i, var in enumerate(self.playlist_vars) if var.get()]
+            selected_indices = [i for i, var in enumerate(self.playlist_all_vars) if var.get()]
                 
             if not selected_indices:
                 messagebox.showwarning("提示", "請至少在清單中勾選一部影片！")
                 return
-            entries = self.playlist_entries
+            
+            entries = self.playlist_all_entries
             for i in selected_indices:
                 vid_url = entries[i].get('url') or entries[i].get('webpage_url')
                 if vid_url:
@@ -741,7 +1047,7 @@ class YouTubeDownloaderGUI:
         threading.Thread(target=self.process_download, args=(urls_to_download, save_dir, fmt, quality), daemon=True).start()
 
     def process_download(self, urls, save_dir, fmt, quality):
-        if fmt == "mp4":
+        if fmt in ["mp4", "mkv"]:
             if "最高畫質" in quality:
                 format_str = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
             elif "1080" in quality:
@@ -754,12 +1060,32 @@ class YouTubeDownloaderGUI:
                 format_str = 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360][ext=mp4]/best'
                 
             ydl_opts = {
-                'outtmpl': os.path.join(save_dir, '%(title)s.%(ext)s'),
+                'outtmpl': os.path.join(save_dir, '%(title)s [%(id)s].%(ext)s'),
                 'format': format_str,
-                'merge_output_format': 'mp4',
+                'merge_output_format': fmt,
                 'progress_hooks': [self.progress_hook],
                 'ffmpeg_location': self.app_dir,
-                'color': 'no_color'
+                'color': 'no_color',
+                'nocheckcertificate': True,
+                'no_warnings': True,
+                'socket_timeout': 30,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'referer': 'https://www.facebook.com/',
+            }
+        elif fmt == "wav":
+            ydl_opts = {
+                'outtmpl': os.path.join(save_dir, '%(title)s [%(id)s].%(ext)s'),
+                'format': 'bestaudio/best',
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'wav',
+                }],
+                'progress_hooks': [self.progress_hook],
+                'ffmpeg_location': self.app_dir,
+                'color': 'no_color',
+                'nocheckcertificate': True,
+                'socket_timeout': 30,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             }
         else:
             if "320" in quality:
@@ -770,7 +1096,7 @@ class YouTubeDownloaderGUI:
                 kbps = '128'
                 
             ydl_opts = {
-                'outtmpl': os.path.join(save_dir, '%(title)s.%(ext)s'),
+                'outtmpl': os.path.join(save_dir, '%(title)s [%(id)s].%(ext)s'),
                 'format': 'bestaudio/best',
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
@@ -779,7 +1105,10 @@ class YouTubeDownloaderGUI:
                 }],
                 'progress_hooks': [self.progress_hook],
                 'ffmpeg_location': self.app_dir,
-                'color': 'no_color'
+                'color': 'no_color',
+                'nocheckcertificate': True,
+                'socket_timeout': 30,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             }
             
         ydl_opts['noplaylist'] = True
@@ -794,9 +1123,39 @@ class YouTubeDownloaderGUI:
                     self.root.after(0, lambda idx=i: self.update_progress_ui(0, f"即將下載清單第 {idx+1}/{total} 部，請稍候...", "blue"))
                 else:
                     self.root.after(0, lambda: self.update_progress_ui(0, "連線中，準備開始下載...", "blue"))
+
+                # 增加 Cookies 支援
+                browser_choice = self.cookie_browser.get()
+                use_cookies = False
+                if browser_choice == "選擇 .txt 檔案...":
+                    cookie_file = self.cookie_file_path.get()
+                    if os.path.exists(cookie_file):
+                        ydl_opts['cookiefile'] = cookie_file
+                        use_cookies = True
+                elif browser_choice != "無":
+                    ydl_opts['cookiesfrombrowser'] = (browser_choice,)
+                    use_cookies = True
                     
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ret_code = ydl.download([url])
+                except Exception as e:
+                    # 智慧容錯：如果是 YouTube 且 Cookies 下載階段報錯，嘗試不帶 Cookies 重試
+                    if use_cookies and ("youtube.com" in url or "youtu.be" in url) and ("cookie" in str(e).lower() or "dpapi" in str(e).lower() or "not copy" in str(e).lower()):
+                        temp_opts = ydl_opts.copy()
+                        if "cookiesfrombrowser" in temp_opts: del temp_opts['cookiesfrombrowser']
+                        if "cookiefile" in temp_opts: del temp_opts['cookiefile']
+                        with yt_dlp.YoutubeDL(temp_opts) as ydl:
+                            ret_code = ydl.download([url])
+                    else:
+                        raise e
+
+                if ret_code != 0:
+                    raise Exception(f"下載過程中斷或失敗 (代碼: {ret_code})")
+            
+                # 下載完畢後的二次確認：確保檔案真的存在於資料夾中
+                self.root.after(0, lambda: self.update_progress_ui(100, "正在完成最後處理...", "blue"))
+                time.sleep(1) # 給予系統一點時間寫入
                     
             if self.is_cancelled:
                 self.root.after(0, lambda: self.update_progress_ui(0, "下載任務已取消", "red"))
@@ -807,12 +1166,13 @@ class YouTubeDownloaderGUI:
                 
         except Exception as e:
             # 判斷是否為我們主動拋出的取消例外
-            if "USER_CANCELLED" in str(e):
+            err_str = str(e)
+            if "USER_CANCELLED" in err_str:
                 self.root.after(0, lambda: self.update_progress_ui(0, "下載任務已取消", "red"))
                 self.root.after(0, lambda: messagebox.showinfo("取消", "已成功取消下載任務。\n(未完成的暫存檔已保留，未來重新下載可自動接續進度)"))
             else:
                 self.root.after(0, lambda: self.update_progress_ui(0, "下載過程發生錯誤", "red"))
-                self.root.after(0, lambda: messagebox.showerror("錯誤", f"下載失敗，可能是網路問題或影片遭版權封鎖：\n{str(e)}"))
+                self.root.after(0, lambda: messagebox.showerror("錯誤", f"下載失敗，可能是網路問題或影片遭版權封鎖：\n{err_str}"))
         finally:
             self.root.after(0, lambda: self.download_btn.config(state="normal"))
             self.root.after(0, lambda: self.analyze_btn.config(state="normal"))

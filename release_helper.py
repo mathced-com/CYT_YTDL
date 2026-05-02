@@ -34,6 +34,27 @@ def check_gh_login():
         print("\n[!] 系統中找不到 gh 指令 (GitHub CLI)。請先安裝 GitHub CLI 才能完全自動化。")
         return False
 
+def convert_md_to_txt(md_path, txt_path):
+    try:
+        with open(md_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        # 簡單的去標記化：去除 GitHub 警示框語法
+        content = re.sub(r'> \[!IMPORTANT\]', '【重要聲明】', content)
+        content = re.sub(r'> \[!NOTE\]', '【備註】', content)
+        content = re.sub(r'> \[!TIP\]', '【提示】', content)
+        content = re.sub(r'# ', '', content)
+        content = re.sub(r'## ', '■ ', content)
+        content = re.sub(r'### ', '  - ', content)
+        content = re.sub(r'\*\*', '', content)
+        
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return True
+    except Exception as e:
+        print(f"轉換說明檔失敗: {e}")
+        return False
+
 def main():
     print("==============================================")
     print("      CYT_YTDL 一鍵發布新版本助手 (全自動版)")
@@ -83,23 +104,28 @@ def main():
         return
 
     print("\n[3/6] 正在打包成執行檔 (這需要 1~2 分鐘，請耐心等候)...")
-    print("      (正在確認 PyInstaller 封裝套件是否安裝)")
-    subprocess.run(["py", "-3", "-m", "pip", "install", "pyinstaller"], capture_output=True)
     subprocess.run(["py", "-3", "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed", "--icon=icon.ico", "--add-data", "icon.ico;.", "--name", "CYT_YTDL", "main.py"])
     
     exe_path = os.path.join("dist", "CYT_YTDL.exe")
     zip_path = os.path.join("dist", "CYT_YTDL.zip")
+    txt_path = os.path.join("dist", "使用說明.txt")
+    
     if not os.path.exists(exe_path):
         print(f"\n[Error] 打包失敗，找不到 {exe_path}")
         input("請按 Enter 鍵結束...")
         return
 
-    print("\n[3.5/6] 正在將執行檔壓縮為 ZIP (防毒軟體友好型)...")
+    print("\n[3.3/6] 正在同步產生文字版使用說明...")
+    convert_md_to_txt("使用說明.md", txt_path)
+
+    print("\n[3.5/6] 正在將執行檔與說明書壓縮為 ZIP (使用者友善型)...")
     try:
         import zipfile
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             zipf.write(exe_path, os.path.basename(exe_path))
-        print(f"      [OK] 壓縮完成: {zip_path}")
+            if os.path.exists(txt_path):
+                zipf.write(txt_path, os.path.basename(txt_path))
+        print(f"      [OK] 壓縮完成: {zip_path} (含說明書)")
     except Exception as e:
         print(f"      [Error] 壓縮失敗: {e}")
         input("請按 Enter 鍵結束...")
@@ -110,12 +136,13 @@ def main():
     subprocess.run(["git", "commit", "-m", f"發布新版本 v{new_version}: {update_notes}"])
     subprocess.run(["git", "push"])
     
-    print("\n[5/6] 正在自動建立 GitHub Release 並同時上傳 EXE 與 ZIP (相容舊版更新)...")
-    print("      (檔案較大且包含兩種格式，上傳可能需要 1~2 分鐘，請勿關閉視窗)")
+    print("\n[5/6] 正在建立 Release 並同時上傳所有檔案...")
+    print("      (包含 EXE、ZIP 與 TXT 說明書，上傳可能需要 1~2 分鐘)")
     result = subprocess.run([
         "gh", "release", "create", f"v{new_version}", 
         exe_path, 
         zip_path,
+        txt_path,
         "--title", f"v{new_version}", 
         "--notes", update_notes
     ], capture_output=True, text=True, encoding='utf-8', errors='ignore')

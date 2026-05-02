@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.2.1"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -305,10 +305,10 @@ class YouTubeDownloaderGUI:
         self.cancel_btn = tk.Button(btn_frame, text="取消", font=("Arial", 10), command=self.cancel_download, state="disabled", bg="#f44336", fg="white", width=8)
         self.cancel_btn.pack(side="left", padx=5)
         
-        if not getattr(sys, 'frozen', False):
-            tk.Button(btn_frame, text="更新 yt-dlp (開發者模式)", command=self.update_ytdlp).pack(side="left", padx=15)
+        # 移除 frozen 限制，讓 exe 使用者也能修復核心
+        tk.Button(btn_frame, text="修復下載核心", command=self.update_ytdlp, bg="#FF9800", fg="white", font=("Arial", 9)).pack(side="left", padx=5)
             
-        tk.Button(btn_frame, text="檢查主程式更新", command=self.check_app_update, bg="#FF9800", fg="white").pack(side="left", padx=5)
+        tk.Button(btn_frame, text="檢查主程式更新", command=self.check_app_update, bg="#FF9800", fg="white", font=("Arial", 9)).pack(side="left", padx=5)
 
     def select_all(self):
         for var in self.playlist_all_vars:

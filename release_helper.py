@@ -93,11 +93,26 @@ def main():
         input("請按 Enter 鍵結束...")
         return
         
-    print(f"\n[2/6] 正在更新 main.py 內的版本號為 {new_version}...")
+    print(f"\n[2/6] 正在更新 main.py 與 使用說明.md 內的版本號為 {new_version}...")
     try:
+        # 更新 main.py
         new_content = re.sub(r'APP_VERSION\s*=\s*"[^"]+"', f'APP_VERSION = "{new_version}"', content)
         with open("main.py", "w", encoding="utf-8") as f:
             f.write(new_content)
+            
+        # 同步更新 使用說明.md
+        if os.path.exists("使用說明.md"):
+            with open("使用說明.md", "r", encoding="utf-8") as f:
+                md_content = f.read()
+            # 替換第一行的標題版本號
+            md_content = re.sub(r'使用說明 \(v[^)]+\)', f'使用說明 (v{new_version})', md_content)
+            # 替換結尾的版本號
+            md_content = re.sub(r'Version [0-9.]+', f'Version {new_version}', md_content)
+            
+            with open("使用說明.md", "w", encoding="utf-8") as f:
+                f.write(md_content)
+            print("      [OK] 使用說明.md 版本號已同步。")
+            
     except Exception as e:
         print(f"更新版本號失敗: {e}")
         input("請按 Enter 鍵結束...")
@@ -108,24 +123,24 @@ def main():
     
     exe_path = os.path.join("dist", "CYT_YTDL.exe")
     zip_path = os.path.join("dist", "CYT_YTDL.zip")
-    txt_path = os.path.join("dist", "使用說明.txt")
+    txt_path = os.path.join("dist", "程式說明.txt")
     
     if not os.path.exists(exe_path):
         print(f"\n[Error] 打包失敗，找不到 {exe_path}")
         input("請按 Enter 鍵結束...")
         return
 
-    print("\n[3.3/6] 正在同步產生文字版使用說明...")
+    print("\n[3.3/6] 正在同步產生文字版：程式說明.txt...")
     convert_md_to_txt("使用說明.md", txt_path)
 
-    print("\n[3.5/6] 正在將執行檔與說明書壓縮為 ZIP (使用者友善型)...")
+    print("\n[3.5/6] 正在將執行檔與程式說明壓縮為 ZIP...")
     try:
         import zipfile
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             zipf.write(exe_path, os.path.basename(exe_path))
             if os.path.exists(txt_path):
                 zipf.write(txt_path, os.path.basename(txt_path))
-        print(f"      [OK] 壓縮完成: {zip_path} (含說明書)")
+        print(f"      [OK] 壓縮完成: {zip_path} (含程式說明.txt)")
     except Exception as e:
         print(f"      [Error] 壓縮失敗: {e}")
         input("請按 Enter 鍵結束...")
@@ -137,7 +152,7 @@ def main():
     subprocess.run(["git", "push"])
     
     print("\n[5/6] 正在建立 Release 並同時上傳所有檔案...")
-    print("      (包含 EXE、ZIP 與 TXT 說明書，上傳可能需要 1~2 分鐘)")
+    print("      (包含 EXE、ZIP 與 程式說明.txt，上傳可能需要 1~2 分鐘)")
     result = subprocess.run([
         "gh", "release", "create", f"v{new_version}", 
         exe_path, 

@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.2.4"
+APP_VERSION = "2.2.5"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -88,6 +88,11 @@ class YouTubeDownloaderGUI:
         self.playlist_all_vars = []
         self.playlist_all_entries = []
         self.playlist_current_page = 0
+        
+        # 章節分割相關
+        self.current_chapters = []
+        self.split_by_chapters = tk.BooleanVar(value=False)
+        self._downloaded_filepath = None  # 追蹤最後下載的完整檔案路徑
         
         # 載入持久化配置
         self.config_path = os.path.join(self.app_dir, "config.json")
@@ -799,12 +804,16 @@ class YouTubeDownloaderGUI:
                 title = info.get('title') or info.get('fulltitle') or f"影片_{info.get('id', '未知')}"
                 dur_str = self.format_duration(info.get('duration'))
                 
+                # 取得章節資料
+                chapters = info.get('chapters') or []
+                self.current_chapters = chapters
+                
                 # 優先從多個欄位尋找圖片
                 thumb_url = info.get('thumbnail')
                 if not thumb_url and info.get('thumbnails'):
                     thumb_url = info['thumbnails'][-1].get('url') # 抓最後一張通常最大
                     
-                self.root.after(0, lambda: self.show_single_video(title, dur_str, thumb_url))
+                self.root.after(0, lambda: self.show_single_video(title, dur_str, thumb_url, chapters))
                 
         except Exception as e:
             err_str = str(e)
@@ -861,20 +870,21 @@ class YouTubeDownloaderGUI:
         self.download_btn.config(state="normal")
         self.update_progress_ui(0, "解析完成！點擊「開始下載」以下載全集", "green")
 
-    def show_single_video(self, title, dur_str, thumb_url):
+    def show_single_video(self, title, dur_str, thumb_url, chapters=None):
         self.title_label.config(text="【單一影片解析結果】")
         for widget in self.list_frame.scrollable_frame.winfo_children():
             widget.destroy()
             
-        # 對於單一影片，固定高度並隱藏捲軸
+        # 有章節時需要更多高度
+        canvas_height = 200 if chapters else 150
         self.list_frame.pack(fill="both", expand=True, padx=10, pady=5)
-        self.list_frame.canvas.config(height=150) 
+        self.list_frame.canvas.config(height=canvas_height)
         try:
             self.list_frame.scrollbar.pack_forget() # 隱藏捲軸
         except:
             pass
         
-        row_frame = tk.Frame(self.list_frame.scrollable_frame, pady=15)
+        row_frame = tk.Frame(self.list_frame.scrollable_frame, pady=10)
         row_frame.pack(fill="x", anchor="w")
         
         thumb_label = tk.Label(row_frame, text="無圖片", bg="#e0e0e0", width=14, height=3)
@@ -889,11 +899,59 @@ class YouTubeDownloaderGUI:
                 thumb_url = "https:" + thumb_url
             threading.Thread(target=self.load_thumbnail, args=(thumb_url, thumb_label), daemon=True).start()
         
+        # 若偵測到章節，顯示分割選項
+        if chapters:
+            chapter_frame = tk.Frame(self.list_frame.scrollable_frame, pady=5, padx=5)
+            chapter_frame.pack(fill="x", anchor="w")
+            
+            self.split_by_chapters.set(False)  # 每次解析重置
+            chk = tk.Checkbutton(
+                chapter_frame,
+                text=f"✂️ 依章節分割為多個檔案（偵測到 {len(chapters)} 個章節）",
+                variable=self.split_by_chapters,
+                font=("Arial", 10, "bold"),
+                fg="#7B1FA2",
+                command=self._on_chapter_split_toggle
+            )
+            chk.pack(side="left", padx=5)
+            
+            # 章節清單預覽
+            self.chapter_preview_label = tk.Label(
+                self.list_frame.scrollable_frame,
+                text=self._build_chapter_preview(chapters),
+                justify="left",
+                font=("Arial", 8),
+                fg="#555555",
+                wraplength=700
+            )
+            self.chapter_preview_label.pack(fill="x", padx=15, pady=(0, 5))
+        
         self.update_progress_ui(0, "解析完成！請確認資訊後點擊「開始下載」", "green")
         self.download_btn.config(state="normal")
         
         # 強制更新捲動區域，解決預覽消失問題
         self.root.after(100, lambda: self.list_frame.canvas.configure(scrollregion=self.list_frame.canvas.bbox("all")))
+
+    def _build_chapter_preview(self, chapters):
+        """建立章節預覽文字"""
+        parts = []
+        for i, ch in enumerate(chapters[:5]):  # 最多預覽前5個
+            start = int(ch.get('start_time', 0))
+            h, rem = divmod(start, 3600)
+            m, s = divmod(rem, 60)
+            t = f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+            parts.append(f"{i+1}. {t} {ch.get('title', '')}")
+        if len(chapters) > 5:
+            parts.append(f"... 共 {len(chapters)} 個章節")
+        return "  |  ".join(parts)
+
+    def _on_chapter_split_toggle(self):
+        """章節分割勾選框切換時的提示"""
+        if self.split_by_chapters.get():
+            self.update_progress_ui(0, f"✅ 下載後將自動分割為 {len(self.current_chapters)} 個章節檔案", "purple")
+        else:
+            self.update_progress_ui(0, "解析完成！請確認資訊後點擊「開始下載」", "green")
+
 
     def show_playlist(self, page=0):
         title = self.video_info.get('title', '播放清單')
@@ -1123,7 +1181,8 @@ class YouTubeDownloaderGUI:
             }
             
         ydl_opts['noplaylist'] = True
-
+        self._downloaded_filepath = None  # 重置路徑追蹤
+        
         try:
             total = len(urls)
             for i, url in enumerate(urls):
@@ -1149,7 +1208,16 @@ class YouTubeDownloaderGUI:
                     
                 try:
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ret_code = ydl.download([url])
+                        # 使用 extract_info 並設 download=True 可以直接拿到下載後的完整資訊
+                        download_info = ydl.extract_info(url, download=True)
+                        # 嘗試從 info 中獲取最終路徑
+                        if download_info:
+                            # 如果有合併過，路徑通常在 requested_downloads
+                            if 'requested_downloads' in download_info and download_info['requested_downloads']:
+                                self._downloaded_filepath = download_info['requested_downloads'][0].get('filepath')
+                            else:
+                                self._downloaded_filepath = download_info.get('filepath') or ydl.prepare_filename(download_info)
+                        ret_code = 0 # 成功執行到此代表沒丟出 Exception
                 except Exception as e:
                     # 智慧容錯：如果是 YouTube 且 Cookies 下載階段報錯，嘗試不帶 Cookies 重試
                     if use_cookies and ("youtube.com" in url or "youtu.be" in url) and ("cookie" in str(e).lower() or "dpapi" in str(e).lower() or "not copy" in str(e).lower()):
@@ -1157,7 +1225,13 @@ class YouTubeDownloaderGUI:
                         if "cookiesfrombrowser" in temp_opts: del temp_opts['cookiesfrombrowser']
                         if "cookiefile" in temp_opts: del temp_opts['cookiefile']
                         with yt_dlp.YoutubeDL(temp_opts) as ydl:
-                            ret_code = ydl.download([url])
+                            download_info = ydl.extract_info(url, download=True)
+                            if download_info:
+                                if 'requested_downloads' in download_info and download_info['requested_downloads']:
+                                    self._downloaded_filepath = download_info['requested_downloads'][0].get('filepath')
+                                else:
+                                    self._downloaded_filepath = download_info.get('filepath') or ydl.prepare_filename(download_info)
+                            ret_code = 0
                     else:
                         raise e
 
@@ -1172,8 +1246,17 @@ class YouTubeDownloaderGUI:
                 self.root.after(0, lambda: self.update_progress_ui(0, "下載任務已取消", "red"))
                 self.root.after(0, lambda: messagebox.showinfo("取消", "已成功取消下載任務。\n(未完成的暫存檔已保留，未來重新下載可自動接續進度)"))
             else:
-                self.root.after(0, lambda: self.update_progress_ui(100.0, "所有任務皆已處理完成！", "green"))
-                self.root.after(0, lambda: messagebox.showinfo("成功", f"全部下載完畢！\n檔案已成功儲存至：\n{save_dir}"))
+                # 章節分割邏輯
+                if (self.split_by_chapters.get() and self.current_chapters
+                        and not self.is_playlist and self._downloaded_filepath):
+                    chapters_copy = list(self.current_chapters)
+                    filepath_copy = self._downloaded_filepath
+                    title_copy = self.video_info.get('title', '影片') if self.video_info else '影片'
+                    self.root.after(0, lambda: self.update_progress_ui(0, f"開始依章節分割 ({len(chapters_copy)} 個章節)...", "purple"))
+                    self._split_by_chapters(filepath_copy, chapters_copy, title_copy, save_dir)
+                else:
+                    self.root.after(0, lambda: self.update_progress_ui(100.0, "所有任務皆已處理完成！", "green"))
+                    self.root.after(0, lambda: messagebox.showinfo("成功", f"全部下載完畢！\n檔案已成功儲存至：\n{save_dir}"))
                 
         except Exception as e:
             # 判斷是否為我們主動拋出的取消例外
@@ -1189,11 +1272,64 @@ class YouTubeDownloaderGUI:
             self.root.after(0, lambda: self.analyze_btn.config(state="normal"))
             self.root.after(0, lambda: self.pause_btn.config(state="disabled", text="暫停", bg="SystemButtonFace"))
             self.root.after(0, lambda: self.cancel_btn.config(state="disabled"))
+    def _sanitize_filename(self, name):
+        """清除檔名中的非法字元"""
+        return re.sub(r'[\\/:*?"<>|]', '_', name).strip()
 
+    def _split_by_chapters(self, src_path, chapters, video_title, save_dir):
+        """依章節將完整檔案分割為多個子檔案"""
+        # 建立輸出子目錄
+        safe_title = self._sanitize_filename(video_title)
+        out_dir = os.path.join(save_dir, f"{safe_title}_chapters")
+        os.makedirs(out_dir, exist_ok=True)
+        
+        ext = os.path.splitext(src_path)[1]  # 取得副檔名如 .mp4 .mp3
+        ffmpeg_path = os.path.join(self.app_dir, 'ffmpeg.exe')
+        total = len(chapters)
+        errors = []
+        
+        for i, ch in enumerate(chapters):
+            if self.is_cancelled:
+                break
+            start_sec = ch.get('start_time', 0)
+            end_sec = ch.get('end_time', None)
+            ch_title = self._sanitize_filename(ch.get('title', f'chapter_{i+1}'))
+            out_name = f"{i+1:02d}_{ch_title}{ext}"
+            out_path = os.path.join(out_dir, out_name)
+            
+            # 即時更新進度
+            self.root.after(0, lambda idx=i: self.update_progress_ui(
+                int(idx / total * 100),
+                f"分割章節 {idx+1}/{total}：{chapters[idx].get('title', '')}",
+                "purple"
+            ))
+            
+            cmd = [ffmpeg_path, '-y', '-i', src_path, '-ss', str(start_sec)]
+            if end_sec is not None:
+                cmd += ['-to', str(end_sec)]
+            cmd += ['-c', 'copy', out_path]
+            
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    errors.append(f"章節 {i+1}: {result.stderr[-200:]}")
+            except Exception as e:
+                errors.append(f"章節 {i+1}: {str(e)}")
+        
+        # 完成後通知
+        if errors:
+            err_msg = '\n'.join(errors[:3])
+            self.root.after(0, lambda: messagebox.showwarning(
+                "部分章節分割失敗",
+                f"以下章節分割時發生錯誤：\n{err_msg}\n\n成功的章節已儲存至：\n{out_dir}"
+            ))
+        else:
+            self.root.after(0, lambda: self.update_progress_ui(100, f"章節分割完成！已分割 {total} 個章節", "green"))
+            self.root.after(0, lambda: messagebox.showinfo(
+                "章節分割完成",
+                f"成功將影片分割為 {total} 個章節檔案！\n\n輸出資料夾：\n{out_dir}\n\n原始完整檔案已保留在：\n{save_dir}"
+            ))
 
-# ===========================================================================
-# MCIPlayer：使用 Windows 內建多媒體控制介面 (MCI) 播放 MP3，不需額外套件
-# ===========================================================================
 class MCIPlayer:
     def __init__(self, alias="cyt_mp3_player"):
         try:

@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.2.3"
+APP_VERSION = "2.2.4"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -157,8 +157,10 @@ class YouTubeDownloaderGUI:
         sel = self.notebook.select()
         if not sel: return
         text = self.notebook.tab(sel, "text")
-        if "裁剪" in text:
+        if "MP3 裁剪" in text:
             self.trimmer._refresh_list()
+        elif "影片裁剪" in text:
+            self.video_trimmer._refresh_list()
         elif "合併" in text:
             self.merger._refresh_src_list()
 
@@ -194,6 +196,11 @@ class YouTubeDownloaderGUI:
         tab_merge = tk.Frame(self.notebook)
         self.notebook.add(tab_merge, text="  🔗 MP3 合併工具  ")
         self.merger = MP3MergerTab(tab_merge, self.download_path)
+        
+        # Tab 4: 影片裁剪工具
+        tab_video_trim = tk.Frame(self.notebook)
+        self.notebook.add(tab_video_trim, text="  🎬 影片裁剪工具  ")
+        self.video_trimmer = VideoTrimmerTab(tab_video_trim, self.download_path)
         
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
@@ -1379,9 +1386,14 @@ class MP3TrimmerTab:
         # 試聽與循環播放
         preview_row = tk.Frame(trim_lf)
         preview_row.pack(fill="x", pady=(2, 5))
-        self.preview_btn = tk.Button(preview_row, text="▶ 試聽標記區段", command=self._preview_section,
-                                     font=("Arial", 10, "bold"), bg="#7B1FA2", fg="white", state="disabled", width=16)
-        self.preview_btn.pack(side="left", padx=(0, 12))
+        self.preview_btn = tk.Button(preview_row, text="▶ 播放標記區段", command=self._preview_section,
+                                     font=("Arial", 10, "bold"), bg="#7B1FA2", fg="white", state="disabled", width=14)
+        self.preview_btn.pack(side="left", padx=(0, 5))
+        
+        self.preview_toggle_btn = tk.Button(preview_row, text="▶ 播放 / 暫停", command=self._preview_toggle,
+                                            font=("Arial", 10, "bold"), bg="#673AB7", fg="white", state="disabled", width=12)
+        self.preview_toggle_btn.pack(side="left", padx=5)
+        
         tk.Checkbutton(preview_row, text="🔁 循環播放", variable=self._loop_var,
                        font=("Arial", 10), fg="#4A148C").pack(side="left")
         self.duration_label = tk.Label(preview_row, text="預計長度：0秒", font=("Arial", 10, "bold"), fg="#E91E63")
@@ -1496,6 +1508,7 @@ class MP3TrimmerTab:
         self.play_btn.config(state="normal")
         self.stop_btn.config(state="normal")
         self.preview_btn.config(state="normal")
+        self.preview_toggle_btn.config(state="normal")
         self.trim_btn.config(state="normal")
         self.trim_status.config(text="")
 
@@ -1523,6 +1536,8 @@ class MP3TrimmerTab:
     def _stop(self):
         self.player.stop()
         self.play_btn.config(text="▶ 播放")
+        self.preview_btn.config(text="▶ 播放標記區段")
+        self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
         self.is_paused = False
         if self.current_file:
             self.time_label.config(text=f"00:00 / {self._fmt(self.total_ms)}")
@@ -1556,8 +1571,15 @@ class MP3TrimmerTab:
                         return
         if mode in ("playing", "paused"):
             self._update_job = self.parent.after(200, self._do_update)
+            if self._preview_mode:
+                if mode == "playing":
+                    self.preview_toggle_btn.config(text="⏸ 暫停")
+                else:
+                    self.preview_toggle_btn.config(text="▶ 播放")
         else:
             self.play_btn.config(text="▶ 播放")
+            self.preview_btn.config(text="▶ 播放標記區段")
+            self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
             self._preview_mode = False
             self._update_job = None
 
@@ -1690,6 +1712,7 @@ class MP3TrimmerTab:
         """從標記起點開始播放，到達終點時自動停止"""
         if not self.current_file:
             return
+            
         s_sec = self._parse_time(self.start_time_str.get())
         e_sec = self._parse_time(self.end_time_str.get())
         
@@ -1707,10 +1730,30 @@ class MP3TrimmerTab:
             
         self._preview_mode = True
         self.player.seek(s_ms)
-        if self.player.get_mode() != "playing":
-            self.player.play()
+        self.player.play()
         self.play_btn.config(text="⏸ 暫停")
+        self.preview_toggle_btn.config(text="⏸ 暫停")
         self._start_update_loop()
+
+    def _preview_toggle(self):
+        """在當前位置切換 播放/暫停，且受限於標記範圍"""
+        if not self.current_file:
+            return
+            
+        mode = self.player.get_mode()
+        if mode == "playing":
+            self.player.pause()
+            self.play_btn.config(text="▶ 播放")
+            self.preview_toggle_btn.config(text="▶ 播放")
+        elif mode == "paused":
+            self.player.resume()
+            self.play_btn.config(text="⏸ 暫停")
+            self.preview_toggle_btn.config(text="⏸ 暫停")
+            self._preview_mode = True # 確保是在預覽模式
+            self._start_update_loop()
+        else:
+            # 如果目前是停止狀態，從起點播放
+            self._preview_section()
 
     def _update_displays(self):
         self._draw_trim_canvas()
@@ -1794,6 +1837,402 @@ class MP3TrimmerTab:
         m = int(sec) // 60
         s = sec % 60
         return f"{m}分{s:05.2f}秒"
+
+
+# ===========================================================================
+# VideoTrimmerTab：影片裁剪工具的完整 UI 類別 (支援 MP4/MKV)
+# ===========================================================================
+class VideoTrimmerTab:
+    def __init__(self, parent, download_path_var):
+        self.parent = parent
+        self.download_path_var = download_path_var
+        self.player = MCIPlayer(alias="cyt_video_player")
+        self.current_file = None
+        self.total_ms = 0
+        self.is_playing = False
+        self.is_paused = False
+        self.start_time_str = tk.StringVar(value="0:00")
+        self.end_time_str = tk.StringVar(value="0:00")
+        self._update_job = None
+        self._seeking = False
+        self._preview_mode = False
+        self._loop_var = tk.BooleanVar(value=False)
+        self._build_ui()
+
+    def _build_ui(self):
+        # === 左側：檔案列表區 ===
+        left_frame = tk.Frame(self.parent, width=210)
+        left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
+        left_frame.pack_propagate(False)
+
+        tk.Label(left_frame, text="影片檔案列表", font=("Arial", 11, "bold")).pack(anchor="w")
+
+        folder_frame = tk.Frame(left_frame)
+        folder_frame.pack(fill="x", pady=3)
+        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Arial", 8))
+        self.folder_entry.pack(side="left", fill="x", expand=True)
+        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Arial", 8)).pack(side="left", padx=2)
+
+        self.file_listbox = tk.Listbox(left_frame, font=("Arial", 9), selectmode="single", activestyle="dotbox")
+        self.file_listbox.pack(fill="both", expand=True, pady=5)
+        self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
+
+        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Arial", 9)).pack(fill="x")
+
+        # === 右側：控制區 ===
+        right_frame = tk.Frame(self.parent)
+        right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
+
+        # 影片播放容器
+        self.video_container = tk.Frame(right_frame, bg="black", height=280)
+        self.video_container.pack(fill="x", pady=(0, 5))
+        self.video_container.pack_propagate(False)
+        self.video_label = tk.Label(self.video_container, text="請從左側選取影片進行預覽", fg="white", bg="black", font=("Arial", 10))
+        self.video_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # 播放控制按鈕
+        ctrl_frame = tk.Frame(right_frame)
+        ctrl_frame.pack(anchor="w", pady=3)
+        tk.Button(ctrl_frame, text="⏮ -5s", command=lambda: self._seek_relative(-5000), font=("Arial", 9), width=5).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="◀ -1s", command=lambda: self._seek_relative(-1000), font=("Arial", 9), width=5).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="⏪ -0.1s", command=lambda: self._seek_relative(-100), font=("Arial", 8), width=6).pack(side="left", padx=1)
+        
+        self.play_btn = tk.Button(ctrl_frame, text="▶ 播放", command=self._toggle_play,
+                                  font=("Arial", 11, "bold"), bg="#2196F3", fg="white", width=8, state="disabled")
+        self.play_btn.pack(side="left", padx=4)
+        
+        tk.Button(ctrl_frame, text="+0.1s ⏩", command=lambda: self._seek_relative(100), font=("Arial", 8), width=6).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="+1s ▶", command=lambda: self._seek_relative(1000), font=("Arial", 9), width=5).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="+5s ⏭", command=lambda: self._seek_relative(5000), font=("Arial", 9), width=5).pack(side="left", padx=1)
+        
+        self.time_label = tk.Label(ctrl_frame, text="00:00 / 00:00", font=("Arial", 11), fg="#333")
+        self.time_label.pack(side="left", padx=10)
+
+        # Canvas 進度條
+        canvas_outer = tk.Frame(right_frame, bg="#333", pady=1)
+        canvas_outer.pack(fill="x", pady=(4, 0))
+        self.trim_canvas = tk.Canvas(canvas_outer, height=20, bg="#e0e0e0", highlightthickness=0, cursor="hand2")
+        self.trim_canvas.pack(fill="both", expand=True)
+        self.trim_canvas.bind("<ButtonPress-1>", self._canvas_click)
+        self.trim_canvas.bind("<B1-Motion>", self._canvas_drag)
+        self.trim_canvas.bind("<Configure>", lambda e: self._draw_trim_canvas())
+
+        # 影片裁剪設定區
+        trim_lf = tk.LabelFrame(right_frame, text="✂️ 影片裁剪設定", font=("Arial", 10, "bold"), padx=10, pady=6)
+        trim_lf.pack(fill="x", pady=5)
+
+        # 播放與循環播放
+        row0 = tk.Frame(trim_lf)
+        row0.pack(fill="x", pady=(2, 5))
+        self.preview_btn = tk.Button(row0, text="▶ 播放標記區段", command=self._preview_section,
+                                     font=("Arial", 10, "bold"), bg="#7B1FA2", fg="white", state="disabled", width=14)
+        self.preview_btn.pack(side="left", padx=(0, 5))
+        
+        self.preview_toggle_btn = tk.Button(row0, text="▶ 播放 / 暫停", command=self._preview_toggle,
+                                            font=("Arial", 10, "bold"), bg="#673AB7", fg="white", state="disabled", width=12)
+        self.preview_toggle_btn.pack(side="left", padx=5)
+        
+        tk.Checkbutton(row0, text="🔁 循環播放", variable=self._loop_var,
+                       font=("Arial", 10), fg="#4A148C").pack(side="left")
+        self.duration_label = tk.Label(row0, text="預計長度：0秒", font=("Arial", 10, "bold"), fg="#E91E63")
+        self.duration_label.pack(side="right", padx=10)
+
+        # 起點
+        row1 = tk.Frame(trim_lf)
+        row1.pack(fill="x", pady=2)
+        tk.Label(row1, text="起點：", font=("Arial", 10), width=6).pack(side="left")
+        tk.Entry(row1, textvariable=self.start_time_str, width=12, font=("Arial", 10)).pack(side="left", padx=5)
+        tk.Button(row1, text="📍 標記目前位置", command=self._mark_start, font=("Arial", 9), bg="#1976D2", fg="white").pack(side="left")
+
+        # 終點
+        row2 = tk.Frame(trim_lf)
+        row2.pack(fill="x", pady=2)
+        tk.Label(row2, text="終點：", font=("Arial", 10), width=6).pack(side="left")
+        tk.Entry(row2, textvariable=self.end_time_str, width=12, font=("Arial", 10)).pack(side="left", padx=5)
+        tk.Button(row2, text="📍 標記目前位置", command=self._mark_end, font=("Arial", 9), bg="#E64A19", fg="white").pack(side="left")
+        
+        # 輸出設定
+        out_row = tk.Frame(right_frame)
+        out_row.pack(fill="x", pady=5)
+        tk.Label(out_row, text="儲存檔名：", font=("Arial", 10)).pack(side="left")
+        self.out_entry = tk.Entry(out_row, font=("Arial", 10))
+        self.out_entry.pack(side="left", fill="x", expand=True, padx=5)
+        self.ext_label = tk.Label(out_row, text=".mp4", font=("Arial", 10))
+        self.ext_label.pack(side="left")
+
+        # 執行按鈕
+        self.trim_btn = tk.Button(right_frame, text="🎬 執行影片裁剪 (無損快速模式)", command=self._do_trim,
+                                  font=("Arial", 12, "bold"), bg="#F44336", fg="white", height=2, state="disabled")
+        self.trim_btn.pack(fill="x", pady=5)
+        
+        self.trim_status = tk.Label(right_frame, text="", font=("Arial", 9), fg="green")
+        self.trim_status.pack()
+
+        self._refresh_list()
+
+    def _browse_folder(self):
+        folder = filedialog.askdirectory(initialdir=self.download_path_var.get())
+        if folder:
+            self._folder_path = folder
+            self._update_folder_entry(folder)
+            self._refresh_list()
+
+    def _update_folder_entry(self, path):
+        self.folder_entry.config(state="normal")
+        self.folder_entry.delete(0, tk.END)
+        self.folder_entry.insert(0, path)
+        self.folder_entry.config(state="readonly")
+
+    def _refresh_list(self):
+        folder = getattr(self, '_folder_path', self.download_path_var.get())
+        self._folder_path = folder
+        self._update_folder_entry(folder)
+        self.file_listbox.delete(0, tk.END)
+        if not os.path.exists(folder): return
+        files = sorted([f for f in os.listdir(folder) if f.lower().endswith(('.mp4', '.mkv'))])
+        for f in files: self.file_listbox.insert(tk.END, f)
+
+    def _on_file_select(self, event):
+        sel = self.file_listbox.curselection()
+        if not sel: return
+        filename = self.file_listbox.get(sel[0])
+        full_path = os.path.join(self._folder_path, filename)
+        self._load_video(full_path)
+
+    def _load_video(self, path):
+        self._stop()
+        self.current_file = path
+        # 使用 MCI 播放器
+        short_path = self.player._get_short_path(path)
+        p = f'"{short_path}"' if short_path else f'"{path}"'
+        
+        # 開啟影片並嵌入視窗
+        hwnd = self.video_container.winfo_id()
+        self.player._send(f'open {p} type mpegvideo alias {self.player._alias} style child parent {hwnd}')
+        self.player._send(f'set {self.player._alias} time format milliseconds')
+        self.player._is_open = True
+        
+        self.total_ms = self.player.get_length()
+        self.time_label.config(text=f"00:00 / {self._fmt(self.total_ms)}")
+        self.start_time_str.set("0:00.00")
+        self.end_time_str.set(self._fmt_time_str(self.total_ms / 1000))
+        
+        # 調整影片顯示區域
+        w, h = self.video_container.winfo_width(), self.video_container.winfo_height()
+        self.player._send(f'put {self.player._alias} window at 0 0 {w} {h}')
+        
+        base, ext = os.path.splitext(os.path.basename(path))
+        self.out_entry.delete(0, tk.END)
+        self.out_entry.insert(0, f"{base}_clip")
+        self.ext_label.config(text=ext)
+        self.play_btn.config(state="normal")
+        self.preview_btn.config(state="normal")
+        self.preview_toggle_btn.config(state="normal")
+        self.trim_btn.config(state="normal")
+        self.video_label.place_forget()
+        self._draw_trim_canvas()
+
+    def _toggle_play(self):
+        if not self.current_file: return
+        mode = self.player.get_mode()
+        if mode == "playing":
+            self.player.pause()
+            self.play_btn.config(text="▶ 播放")
+        else:
+            self.player.play()
+            self.play_btn.config(text="⏸ 暫停")
+            self._preview_mode = False # 一般播放模式
+            self._start_update_loop()
+
+    def _stop(self):
+        self.player.close()
+        self.play_btn.config(text="▶ 播放")
+        self.preview_btn.config(text="▶ 播放標記區段")
+        self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
+        if self._update_job: self.parent.after_cancel(self._update_job)
+        self.video_label.place(relx=0.5, rely=0.5, anchor="center")
+
+    def _start_update_loop(self):
+        if self._update_job: self.parent.after_cancel(self._update_job)
+        self._do_update()
+
+    def _do_update(self):
+        if self.player._is_open:
+            mode = self.player.get_mode()
+            pos = self.player.get_position()
+            self.time_label.config(text=f"{self._fmt(pos)} / {self._fmt(self.total_ms)}")
+            self._draw_trim_canvas(pos)
+            
+            # 試聽模式邏輯
+            if self._preview_mode:
+                if mode == "playing":
+                    self.preview_toggle_btn.config(text="⏸ 暫停")
+                else:
+                    self.preview_toggle_btn.config(text="▶ 播放")
+                
+                e_ms = int(self._parse_time(self.end_time_str.get()) * 1000)
+                if pos >= e_ms:
+                    if self._loop_var.get():
+                        s_ms = int(self._parse_time(self.start_time_str.get()) * 1000)
+                        self.player.seek(s_ms)
+                        # 強制重新整理畫面
+                        self.player._send(f'update {self.player._alias}')
+                    else:
+                        self.player.pause()
+                        self.play_btn.config(text="▶ 播放")
+                        self.preview_btn.config(text="▶ 播放標記區段")
+                        self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
+                        self._preview_mode = False
+                        return
+
+            if self.player.get_mode() == "playing":
+                self._update_job = self.parent.after(200, self._do_update)
+            else:
+                self.play_btn.config(text="▶ 播放")
+                self.preview_btn.config(text="▶ 播放標記區段")
+                self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
+                self._preview_mode = False
+                self._update_job = None
+
+    def _preview_section(self):
+        if not self.player._is_open: return
+        
+        # 全新試聽：從起點開始
+        s = self._parse_time(self.start_time_str.get())
+        self.player.seek(int(s * 1000))
+        self._preview_mode = True
+        self.player.play()
+        self.play_btn.config(text="⏸ 暫停")
+        self.preview_toggle_btn.config(text="⏸ 暫停")
+        self._start_update_loop()
+        # 強制刷新畫面
+        self.player._send(f'update {self.player._alias}')
+
+    def _preview_toggle(self):
+        """在當前位置切換 播放/暫停，且受限於標記範圍"""
+        if not self.player._is_open: return
+        
+        mode = self.player.get_mode()
+        if mode == "playing":
+            self.player.pause()
+            self.play_btn.config(text="▶ 播放")
+            self.preview_toggle_btn.config(text="▶ 播放")
+        elif mode == "paused":
+            self.player.play()
+            self.play_btn.config(text="⏸ 暫停")
+            self.preview_toggle_btn.config(text="⏸ 暫停")
+            self._preview_mode = True # 確保是在預覽模式
+            self._start_update_loop()
+        else:
+            # 如果目前是停止狀態，從起點播放
+            self._preview_section()
+
+    def _seek_relative(self, delta_ms):
+        if not self.player._is_open: return
+        pos = self.player.get_position()
+        new_pos = max(0, min(pos + delta_ms, self.total_ms))
+        self.player.seek(new_pos)
+        
+        # 強制重新整理畫面 (MCI 在暫停時 Seek 可能不會更新視窗，需要 update 或 put)
+        if self.player.get_mode() != "playing":
+            w, h = self.video_container.winfo_width(), self.video_container.winfo_height()
+            self.player._send(f'put {self.player._alias} window at 0 0 {w} {h}')
+            self.player._send(f'update {self.player._alias}')
+            
+        # 即時同步 UI
+        self.time_label.config(text=f"{self._fmt(new_pos)} / {self._fmt(self.total_ms)}")
+        self._draw_trim_canvas(new_pos)
+
+    def _mark_start(self):
+        pos = self.player.get_position() if self.player._is_open else 0
+        self.start_time_str.set(self._fmt_time_str(pos / 1000))
+        self._draw_trim_canvas()
+
+    def _mark_end(self):
+        pos = self.player.get_position() if self.player._is_open else self.total_ms
+        self.end_time_str.set(self._fmt_time_str(pos / 1000))
+        self._draw_trim_canvas()
+
+    def _draw_trim_canvas(self, pos_ms=None):
+        c = self.trim_canvas
+        w, h = c.winfo_width(), c.winfo_height()
+        if w <= 1: return
+        c.delete("all")
+        c.create_rectangle(0, 0, w, h, fill="#d0d0d0", outline="")
+        if self.total_ms > 0:
+            s = self._parse_time(self.start_time_str.get())
+            e = self._parse_time(self.end_time_str.get())
+            
+            # 更新預計長度文字
+            dur = abs(e - s)
+            self.duration_label.config(text=f"預計長度：{self._fmt_time_str(dur)}")
+            
+            xs, xe = int(s*1000/self.total_ms*w), int(e*1000/self.total_ms*w)
+            c.create_rectangle(xs, 0, xe, h, fill="#81C784", outline="")
+            if pos_ms is None: pos_ms = self.player.get_position()
+            xp = int(pos_ms/self.total_ms*w)
+            c.create_rectangle(xp-1, 0, xp+1, h, fill="red", outline="")
+
+    def _canvas_click(self, event):
+        if self.total_ms <= 0: return
+        self._seeking = True
+        w = self.trim_canvas.winfo_width()
+        ms = int(event.x / w * self.total_ms)
+        self.player.seek(ms)
+        # 暫停時強制更新畫面
+        if self.player.get_mode() != "playing":
+            w_v, h_v = self.video_container.winfo_width(), self.video_container.winfo_height()
+            self.player._send(f'put {self.player._alias} window at 0 0 {w_v} {h_v}')
+            self.player._send(f'update {self.player._alias}')
+            
+        self.time_label.config(text=f"{self._fmt(ms)} / {self._fmt(self.total_ms)}")
+        self._draw_trim_canvas(ms)
+
+    def _canvas_drag(self, event):
+        self._canvas_click(event)
+
+    def _do_trim(self):
+        if not self.current_file: return
+        s, e = self._parse_time(self.start_time_str.get()), self._parse_time(self.end_time_str.get())
+        if s >= e: 
+            messagebox.showerror("錯誤", "起點必須小於終點。")
+            return
+        out_name = self.out_entry.get().strip() + self.ext_label.cget("text")
+        out_path = os.path.join(self._folder_path, out_name)
+        
+        self.trim_btn.config(state="disabled")
+        self.trim_status.config(text="影片裁剪中（無損模式速度極快）...", fg="blue")
+        threading.Thread(target=self._run_ffmpeg, args=(self.current_file, out_path, s, e), daemon=True).start()
+
+    def _run_ffmpeg(self, in_path, out_path, start, end):
+        try:
+            # 使用 -ss 在 -i 前面可實現快速跳轉，搭配 -c copy 實現無損剪輯
+            cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", in_path, "-to", str(end-start), "-c", "copy", out_path]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode == 0:
+                self.parent.after(0, lambda: self.trim_status.config(text=f"✅ 裁剪成功：{os.path.basename(out_path)}", fg="green"))
+                self.parent.after(0, self._refresh_list)
+            else:
+                self.parent.after(0, lambda: self.trim_status.config(text="❌ 裁剪失敗", fg="red"))
+        except Exception as ex:
+            self.parent.after(0, lambda: self.trim_status.config(text=f"❌ 錯誤：{ex}", fg="red"))
+        finally:
+            self.parent.after(0, lambda: self.trim_btn.config(state="normal"))
+
+    def _fmt(self, ms):
+        s = int(ms) // 1000
+        return f"{s // 60:02d}:{s % 60:02d}"
+
+    def _fmt_time_str(self, sec):
+        return f"{int(sec)//60}:{sec%60:05.2f}"
+
+    def _parse_time(self, t_str):
+        try:
+            if ":" in t_str:
+                p = t_str.split(":")
+                return float(p[0])*60 + float(p[1])
+            return float(t_str)
+        except: return 0.0
 
 
 # ===========================================================================

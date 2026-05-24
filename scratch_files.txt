@@ -1,0 +1,36 @@
+
+--- Test 1: sub_path = D\\:/download/狸想世界/Hoppers.2026.2160p.MA.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265.srt ---
+Return code: 4294967274
+Error:
+      BPS             : 52
+      DURATION        : 01:43:17.708000000
+      NUMBER_OF_FRAMES: 1335
+      NUMBER_OF_BYTES : 40819
+      _STATISTICS_WRITING_APP: mkvmerge v98.0 ('Chonks') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+[Parsed_subtitles_1 @ 000001707c0908c0] Unable to parse "original_size" option value "/download/狸想世界/Hoppers.2026.2160p.MA.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265.srt" as image size
+[fc#-1 @ 000001707c10a300] Error applying option 'original_size' to filter 'subtitles': Invalid argument
+Error opening output file D:/download/狸想世界/test_output.mp4.
+Error opening output files: Invalid argument
+
+--- Test 2: sub_path = D\:/download/狸想世界/Hoppers.2026.2160p.MA.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265.srt ---
+Return code: 0
+Success!
+
+--- Test 3: sub_path = D:/download/狸想世界/Hoppers.2026.2160p.MA.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265.srt ---
+Return code: 4294967274
+Error:
+      BPS             : 52
+      DURATION        : 01:43:17.708000000
+      NUMBER_OF_FRAMES: 1335
+      NUMBER_OF_BYTES : 40819
+      _STATISTICS_WRITING_APP: mkvmerge v98.0 ('Chonks') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+[Parsed_subtitles_1 @ 0000021b85930040] Unable to parse "original_size" option value "/download/狸想世界/Hoppers.2026.2160p.MA.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265.srt" as image size
+[fc#-1 @ 0000021b859aa300] Error applying option 'original_size' to filter 'subtitles': Invalid argument
+Error opening output file D:/download/狸想世界/test_output.mp4.
+Error opening output files: Invalid argument
+
+--- Test 4: sub_path = Hoppers.2026.2160p.MA.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265.srt ---
+Return code: 0
+Success!

@@ -17,8 +17,9 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.2.10"
+APP_VERSION = "2.3.0"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
+
 
 # ===========================================================================
 # 使用者回饋系統的 Google Apps Script 後台網址
@@ -161,7 +162,28 @@ class YouTubeDownloaderGUI:
         default_dl_dir = os.path.join(self.app_dir, "download")
         data = self._get_config_data()
         
-        self.download_path = tk.StringVar(value=data.get("download_path", default_dl_dir))
+        # 讀取下載路徑，預設為主程式目錄下的 download 資料夾
+        dl_path = data.get("download_path", default_dl_dir)
+        
+        # 智慧相容性與 fallback 檢查：
+        # 1. 如果設定檔中的路徑含有歷史開發遺留路徑 (例如 YTDL_temp)
+        # 2. 或者該路徑在當前電腦上並不存在 (例如以前儲存的特定外接碟磁碟機或特定目錄被刪除)
+        # 則嘗試建立它；如果建立失敗 (如沒有該磁碟槽)，則強制 fallback 至預設的主程式 download 目錄。
+        if "YTDL_temp" in dl_path or not os.path.exists(dl_path):
+            try:
+                os.makedirs(dl_path, exist_ok=True)
+            except Exception:
+                dl_path = default_dl_dir
+        
+        # 確保該資料夾最終 100% 存在於硬碟中，若沒有則自動生成
+        try:
+            os.makedirs(dl_path, exist_ok=True)
+        except Exception:
+            # 備用安全防線：降規至目前工作目錄下的 download
+            dl_path = os.path.abspath("download")
+            os.makedirs(dl_path, exist_ok=True)
+            
+        self.download_path = tk.StringVar(value=dl_path)
         self.format_choice = tk.StringVar(value=data.get("format_choice", "mp4"))
         self.quality_choice = tk.StringVar(value=data.get("quality_choice", ""))
         self.cookie_browser = tk.StringVar(value=data.get("cookie_browser", "無"))
@@ -235,7 +257,22 @@ class YouTubeDownloaderGUI:
             pady=3,
             cursor="hand2"
         )
-        self.feedback_btn.pack(side="right", padx=20)
+        self.feedback_btn.pack(side="right", padx=(5, 20))
+
+        # 右側使用說明按鈕 (Flat UI, 藍色)
+        self.help_btn = tk.Button(
+            header_frame, 
+            text="📖 使用說明", 
+            command=self.open_help_dialog, 
+            font=("Arial", 10, "bold"), 
+            bg="#2196F3", 
+            fg="white", 
+            relief="flat", 
+            padx=10, 
+            pady=3,
+            cursor="hand2"
+        )
+        self.help_btn.pack(side="right", padx=5)
 
         # === 標簿頁 (Notebook) ===
         self.notebook = ttk.Notebook(self.root)
@@ -1582,6 +1619,72 @@ class YouTubeDownloaderGUI:
                 f"成功將影片分割為 {total} 個章節檔案！\n\n輸出資料夾：\n{out_dir}\n\n原始完整檔案已保留在：\n{save_dir}"
             ))
 
+    def open_help_dialog(self):
+        txt_path = os.path.join(self.app_dir, "使用說明.txt")
+        md_path = os.path.join(self.app_dir, "使用說明.md")
+        
+        content = ""
+        # 優先讀取 txt 說明，若不存在則嘗試讀取 md 說明 (便於開發與打包環境相容)
+        if os.path.exists(txt_path):
+            try:
+                with open(txt_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+            except Exception as e:
+                messagebox.showerror("讀取失敗", f"讀取「使用說明.txt」失敗：{e}")
+                return
+        elif os.path.exists(md_path):
+            try:
+                with open(md_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+            except Exception as e:
+                messagebox.showerror("讀取失敗", f"讀取「使用說明.md」失敗：{e}")
+                return
+        else:
+            messagebox.showerror("找不到說明檔", "在程式目錄中找不到「使用說明.txt」或「使用說明.md」檔案。")
+            return
+            
+        # 建立使用說明 Toplevel 視窗
+        help_win = tk.Toplevel(self.root)
+        help_win.title("📖 CYT_網路影音下載器 - 使用說明")
+        help_win.geometry("680x580")
+        help_win.resizable(True, True)
+        help_win.transient(self.root)
+        help_win.grab_set()
+        
+        # 視窗置中
+        help_win.update_idletasks()
+        w_win, h_win = 680, 580
+        x = self.root.winfo_x() + (self.root.winfo_width() - w_win) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - h_win) // 2
+        help_win.geometry(f"{w_win}x{h_win}+{x}+{y}")
+        
+        # 視窗容器
+        main_frame = tk.Frame(help_win, bg="#F5F5F5", padx=15, pady=15)
+        main_frame.pack(fill="both", expand=True)
+        
+        # 標題
+        title_lbl = tk.Label(main_frame, text="📖 CYT_網路影音下載器 使用說明書", font=("Arial", 14, "bold"), bg="#F5F5F5", fg="#1976D2")
+        title_lbl.pack(anchor="w", pady=(0, 10))
+        
+        # 文字展示區 (加上 Scrollbar)
+        text_frame = tk.Frame(main_frame, bg="white", bd=1, relief="solid")
+        text_frame.pack(fill="both", expand=True, pady=5)
+        
+        scrollbar = tk.Scrollbar(text_frame)
+        scrollbar.pack(side="right", fill="y")
+        
+        text_area = tk.Text(text_frame, font=("微軟正黑體", 10), wrap="word", yscrollcommand=scrollbar.set, bd=0, padx=10, pady=10)
+        text_area.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=text_area.yview)
+        
+        # 寫入內容並設為唯讀
+        text_area.insert(tk.END, content)
+        text_area.config(state="disabled")
+        
+        # 關閉按鈕
+        close_btn = tk.Button(main_frame, text="關閉說明", command=help_win.destroy, font=("Arial", 10, "bold"), bg="#9E9E9E", fg="white", relief="flat", padx=15, pady=5, cursor="hand2")
+        close_btn.pack(pady=(10, 0))
+
     def open_feedback_dialog(self):
         # 建立表單 Toplevel 視窗
         dialog = tk.Toplevel(self.root)
@@ -2476,6 +2579,10 @@ class VideoTrimmerTab:
         self.trim_btn = tk.Button(right_frame, text="🎬 執行影片裁剪 (無損快速模式)", command=self._do_trim,
                                   font=("Arial", 12, "bold"), bg="#F44336", fg="white", height=2, state="disabled")
         self.trim_btn.pack(fill="x", pady=5)
+
+        self.extract_btn = tk.Button(right_frame, text="🎵 影音分離 (一鍵提取高品質音軌)", command=self._do_extract_audio,
+                                     font=("Arial", 11, "bold"), bg="#FF9800", fg="white", height=2, state="disabled")
+        self.extract_btn.pack(fill="x", pady=2)
         
         self.trim_status = tk.Label(right_frame, text="", font=("Arial", 9), fg="green")
         self.trim_status.pack()
@@ -2541,6 +2648,7 @@ class VideoTrimmerTab:
         self.preview_btn.config(state="normal")
         self.preview_toggle_btn.config(state="normal")
         self.trim_btn.config(state="normal")
+        self.extract_btn.config(state="normal")
         self.video_label.place_forget()
         self._draw_trim_canvas()
 
@@ -2745,6 +2853,71 @@ class VideoTrimmerTab:
                 return float(p[0])*60 + float(p[1])
             return float(t_str)
         except: return 0.0
+
+    def _do_extract_audio(self):
+        if not self.current_file: return
+        # 彈出小視窗選擇格式
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("選擇音訊提取格式")
+        dialog.geometry("320x150")
+        dialog.resizable(False, False)
+        dialog.transient(self.parent)
+        dialog.grab_set()
+        
+        # 居中顯示
+        dialog.update_idletasks()
+        w = dialog.winfo_width()
+        h = dialog.winfo_height()
+        x = self.parent.winfo_rootx() + (self.parent.winfo_width() - w) // 2
+        y = self.parent.winfo_rooty() + (self.parent.winfo_height() - h) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        tk.Label(dialog, text="請選擇要提取的音訊格式：", font=("Arial", 10)).pack(pady=15)
+        
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(fill="x", padx=10)
+        
+        def select_format(fmt):
+            dialog.destroy()
+            self._start_audio_extraction(fmt)
+            
+        tk.Button(btn_frame, text="高品質 MP3 (320k)", bg="#4CAF50", fg="white", font=("Arial", 9, "bold"),
+                   command=lambda: select_format("mp3")).pack(side="left", expand=True, fill="x", padx=5)
+        tk.Button(btn_frame, text="無損 WAV 音軌", bg="#2196F3", fg="white", font=("Arial", 9, "bold"),
+                   command=lambda: select_format("wav")).pack(side="left", expand=True, fill="x", padx=5)
+
+    def _start_audio_extraction(self, fmt):
+        base, _ = os.path.splitext(os.path.basename(self.current_file))
+        folder = self._folder_path
+        counter = 1
+        out_filename = f"{base}.{fmt}"
+        out_path = os.path.join(folder, out_filename)
+        while os.path.exists(out_path):
+            out_filename = f"{base}_{counter}.{fmt}"
+            out_path = os.path.join(folder, out_filename)
+            counter += 1
+            
+        self.extract_btn.config(state="disabled")
+        self.trim_status.config(text=f"正在提取高品質 {fmt.upper()} 音軌...", fg="blue")
+        threading.Thread(target=self._run_ffmpeg_extract, args=(self.current_file, out_path, fmt), daemon=True).start()
+
+    def _run_ffmpeg_extract(self, in_path, out_path, fmt):
+        try:
+            if fmt == "mp3":
+                cmd = ["ffmpeg", "-y", "-i", in_path, "-vn", "-acodec", "libmp3lame", "-ab", "320k", out_path]
+            else: # wav
+                cmd = ["ffmpeg", "-y", "-i", in_path, "-vn", out_path]
+                
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode == 0:
+                self.parent.after(0, lambda: self.trim_status.config(text=f"✅ 影音分離成功：{os.path.basename(out_path)}", fg="green"))
+                self.parent.after(0, self._refresh_list)
+            else:
+                self.parent.after(0, lambda: self.trim_status.config(text="❌ 提取失敗", fg="red"))
+        except Exception as ex:
+            self.parent.after(0, lambda: self.trim_status.config(text=f"❌ 錯誤：{ex}", fg="red"))
+        finally:
+            self.parent.after(0, lambda: self.extract_btn.config(state="normal"))
 
 
 # ===========================================================================
@@ -3047,12 +3220,17 @@ class VideoConverterTab:
             start_time = time.time()
             time_pattern = re.compile(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)")
             speed_pattern = re.compile(r"speed=\s*(\d+\.?\d*)x")
+            last_lines = []
 
             while True:
                 line = process.stdout.readline()
                 if not line:
                     break
                 line = line.strip()
+                if line:
+                    last_lines.append(line)
+                    if len(last_lines) > 10:
+                        last_lines.pop(0)
                 
                 # 解析時間進度
                 time_match = time_pattern.search(line)
@@ -3090,8 +3268,13 @@ class VideoConverterTab:
                 self.parent.after(0, lambda: self.status_label.config(text=f"✅ 轉檔成功：{os.path.basename(out_path)}", fg="green"))
                 self.parent.after(0, self._refresh_list)
             else:
-                # 如果編碼器出錯，退回到預設模式
-                self.parent.after(0, lambda: self.status_label.config(text="❌ 轉檔失敗，請確認檔案格式是否受支援", fg="red"))
+                # 尋找錯誤訊息
+                err_msg = "請確認檔案格式是否受支援"
+                for l in reversed(last_lines):
+                    if any(w in l for w in ["Error", "Invalid", "Unable", "Failed", "error"]):
+                        err_msg = l
+                        break
+                self.parent.after(0, lambda e=err_msg: self.status_label.config(text=f"❌ 轉檔失敗：{e}", fg="red"))
         except Exception as e:
             self.parent.after(0, lambda: self.status_label.config(text=f"❌ 錯誤：{str(e)}", fg="red"))
         finally:
@@ -3137,10 +3320,10 @@ class VideoConverterTab:
     def _escape_ffmpeg_path(self, path):
         # 將 Windows 反斜線 \ 轉換為正斜線 /
         p = path.replace("\\", "/")
-        # 處理 Windows 磁碟機號的冒號 (例如 C: 轉換為 C\\:)，防範 FFmpeg 濾鏡解析出錯
+        # 處理 Windows 磁碟機號的冒號 (例如 C: 轉換為 C\:)，防範 FFmpeg 濾鏡解析出錯
         if ":" in p:
             drive, rest = p.split(":", 1)
-            p = f"{drive}\\\\:{rest}"
+            p = f"{drive}\\:{rest}"
         return p
 
 

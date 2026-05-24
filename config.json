@@ -1,7 +1,8 @@
 {
     "download_path": "d:\\Antigravity\\CYT_YTDL\\download",
-    "format_choice": "mp4",
-    "quality_choice": "最高畫質 (自動)",
+    "format_choice": "mp3",
+    "quality_choice": "最高音質 (320k)",
     "cookie_browser": "無",
-    "cookie_file_path": "C:/Users/ced/Desktop/www.douyin.com_cookies (2).txt"
+    "cookie_file_path": "C:/Users/ced/Desktop/www.douyin.com_cookies (2).txt",
+    "threads_choice": 3
 }

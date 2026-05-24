@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.2.5"
+APP_VERSION = "2.2.6"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -53,6 +53,22 @@ class ScrollableFrame(ttk.Frame):
 
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+class CancelLogger:
+    def __init__(self, gui):
+        self.gui = gui
+    def debug(self, msg):
+        if not getattr(self.gui, 'is_analyzing', False):
+            raise ValueError("USER_CANCELLED")
+    def info(self, msg):
+        if not getattr(self.gui, 'is_analyzing', False):
+            raise ValueError("USER_CANCELLED")
+    def warning(self, msg):
+        if not getattr(self.gui, 'is_analyzing', False):
+            raise ValueError("USER_CANCELLED")
+    def error(self, msg):
+        if not getattr(self.gui, 'is_analyzing', False):
+            raise ValueError("USER_CANCELLED")
 
 class YouTubeDownloaderGUI:
     def __init__(self, root):
@@ -101,6 +117,8 @@ class YouTubeDownloaderGUI:
         # 暫停與取消狀態標記
         self.is_paused = False
         self.is_cancelled = False
+        self.is_analyzing = False
+        self.playlist_status_labels = []
         
         self.create_widgets()
         self.update_quality_options()
@@ -115,6 +133,9 @@ class YouTubeDownloaderGUI:
         
         if not HAS_PIL:
             messagebox.showwarning("缺少套件", "系統缺少 Pillow 套件，將無法顯示影片封面。")
+
+        # 啟動 2 秒後自動背景靜默檢查更新
+        self.root.after(2000, lambda: self.check_app_update(is_auto=True))
 
     def resource_path(self, relative_path):
         try:
@@ -132,6 +153,7 @@ class YouTubeDownloaderGUI:
         self.quality_choice = tk.StringVar(value=data.get("quality_choice", ""))
         self.cookie_browser = tk.StringVar(value=data.get("cookie_browser", "無"))
         self.cookie_file_path = tk.StringVar(value=data.get("cookie_file_path", ""))
+        self.threads_choice = tk.IntVar(value=data.get("threads_choice", 1))
         self.url_entry_var = tk.StringVar()
         self.url_entry_var.trace_add("write", self.on_url_change)
 
@@ -150,7 +172,8 @@ class YouTubeDownloaderGUI:
             "format_choice": self.format_choice.get(),
             "quality_choice": self.quality_choice.get(),
             "cookie_browser": self.cookie_browser.get(),
-            "cookie_file_path": self.cookie_file_path.get()
+            "cookie_file_path": self.cookie_file_path.get(),
+            "threads_choice": self.threads_choice.get() if hasattr(self, 'threads_choice') else 1
         }
         try:
             with open(self.config_path, "w", encoding="utf-8") as f:
@@ -275,6 +298,12 @@ class YouTubeDownloaderGUI:
         self.quality_combo = ttk.Combobox(format_frame, textvariable=self.quality_choice, state="readonly", width=18)
         self.quality_combo.pack(side="left", padx=5)
         self.quality_combo.bind("<<ComboboxSelected>>", self.save_config)
+
+        tk.Label(format_frame, text="   同時下載數：", font=("Arial", 10)).pack(side="left")
+        self.threads_combo = ttk.Combobox(format_frame, textvariable=self.threads_choice, state="readonly", width=5)
+        self.threads_combo['values'] = [1, 2, 3, 4, 5]
+        self.threads_combo.pack(side="left", padx=5)
+        self.threads_combo.bind("<<ComboboxSelected>>", self.save_config)
         
         path_frame = tk.Frame(bottom_frame)
         path_frame.pack(fill="x", padx=15, pady=3)
@@ -499,8 +528,9 @@ class YouTubeDownloaderGUI:
 
         threading.Thread(target=download_ffmpeg, daemon=True).start()
 
-    def check_app_update(self):
-        self.update_progress_ui(0, "正在檢查主程式更新...", "blue")
+    def check_app_update(self, is_auto=False):
+        if not is_auto:
+            self.update_progress_ui(0, "正在檢查主程式更新...", "blue")
         def run_check():
             try:
                 req = urllib.request.Request(f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest", headers={'User-Agent': 'Mozilla/5.0'})
@@ -509,7 +539,8 @@ class YouTubeDownloaderGUI:
                 latest_version = data.get("tag_name", "").replace("v", "")
                 
                 if not latest_version:
-                    self.root.after(0, lambda: self.update_progress_ui(0, "無法取得版本資訊", "red"))
+                    if not is_auto:
+                        self.root.after(0, lambda: self.update_progress_ui(0, "無法取得版本資訊", "red"))
                     return
                     
                 if latest_version != APP_VERSION:
@@ -523,19 +554,23 @@ class YouTubeDownloaderGUI:
                     if download_url:
                         self.root.after(0, lambda: self.prompt_update(latest_version, download_url))
                     else:
-                        self.root.after(0, lambda: messagebox.showinfo("發現新版本", f"目前最新版本為 {latest_version}，但開發者尚未上傳執行檔。"))
-                        self.root.after(0, lambda: self.update_progress_ui(0, "檢查完畢", "blue"))
+                        if not is_auto:
+                            self.root.after(0, lambda: messagebox.showinfo("發現新版本", f"目前最新版本為 {latest_version}，但開發者尚未上傳執行檔。"))
+                            self.root.after(0, lambda: self.update_progress_ui(0, "檢查完畢", "blue"))
                 else:
-                    self.root.after(0, lambda: messagebox.showinfo("檢查更新", "您目前使用的已經是最新版本！"))
-                    self.root.after(0, lambda: self.update_progress_ui(0, "準備就緒", "blue"))
+                    if not is_auto:
+                        self.root.after(0, lambda: messagebox.showinfo("檢查更新", "您目前使用的已經是最新版本！"))
+                        self.root.after(0, lambda: self.update_progress_ui(0, "準備就緒", "blue"))
             except urllib.error.HTTPError as e:
-                if e.code == 404:
-                    self.root.after(0, lambda: messagebox.showinfo("檢查更新", "專案尚未發布任何版本 (Release)。"))
-                    self.root.after(0, lambda: self.update_progress_ui(0, "無可用更新", "blue"))
-                else:
-                    self.root.after(0, lambda: self.update_progress_ui(0, f"檢查失敗: {e}", "red"))
+                if not is_auto:
+                    if e.code == 404:
+                        self.root.after(0, lambda: messagebox.showinfo("檢查更新", "專案尚未發布任何版本 (Release)。"))
+                        self.root.after(0, lambda: self.update_progress_ui(0, "無可用更新", "blue"))
+                    else:
+                        self.root.after(0, lambda: self.update_progress_ui(0, f"檢查失敗: {e}", "red"))
             except Exception as e:
-                self.root.after(0, lambda: self.update_progress_ui(0, f"檢查失敗: {e}", "red"))
+                if not is_auto:
+                    self.root.after(0, lambda: self.update_progress_ui(0, f"檢查失敗: {e}", "red"))
         
         threading.Thread(target=run_check, daemon=True).start()
 
@@ -649,12 +684,19 @@ class YouTubeDownloaderGUI:
         self.update_progress_ui(0, "等待解析...", "blue")
 
     def start_analyze(self):
+        if getattr(self, 'is_analyzing', False):
+            self.is_analyzing = False
+            self.analyze_btn.config(text="正在取消...", state="disabled")
+            self.update_progress_ui(0, "正在中斷解析程序...", "orange")
+            return
+
         url = self.url_entry.get().strip()
         if not url:
             messagebox.showwarning("警告", "請輸入 YouTube 網址！")
             return
             
-        self.analyze_btn.config(state="disabled")
+        self.is_analyzing = True
+        self.analyze_btn.config(text="停止解析", bg="#f44336", fg="white", activebackground="#d32f2f", activeforeground="white")
         self.download_btn.config(state="disabled")
         self.update_progress_ui(0, "正在解析網址與抓取標題，請稍候...", "blue")
         self.title_label.config(text="解析中...")
@@ -662,6 +704,17 @@ class YouTubeDownloaderGUI:
         self.select_btn_frame.pack_forget()
         
         threading.Thread(target=self.process_analyze, args=(url,), daemon=True).start()
+
+    def reset_analyze_button(self):
+        self.is_analyzing = False
+        self.analyze_btn.config(
+            text="解析網址",
+            state="normal",
+            bg="#2196F3",
+            fg="white",
+            activebackground="#2196F3",
+            activeforeground="white"
+        )
         
     def process_analyze(self, url):
         import urllib.parse
@@ -697,12 +750,13 @@ class YouTubeDownloaderGUI:
                 pass
 
         ydl_opts = {
-            'extract_flat': False, # 單一影片改用深層解析以應對加密
+            'extract_flat': 'in_playlist', # 單一影片改用深層解析以應對加密，清單則用扁平快速解析
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
             'socket_timeout': 15,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'logger': CancelLogger(self),
         }
         
         # 抖音額外優化 (深度偽裝)
@@ -758,6 +812,7 @@ class YouTubeDownloaderGUI:
                 total = len(entries)
                 self.playlist_all_entries = entries
                 self.playlist_all_vars = [tk.BooleanVar(value=True) for _ in range(total)]
+                self.playlist_status_labels = [None] * total
                 self.playlist_current_page = 0
                 
                 if total > 50:
@@ -800,6 +855,7 @@ class YouTubeDownloaderGUI:
                     self.root.after(0, lambda: self.show_playlist(0))
             else:
                 self.is_playlist = False
+                self.playlist_status_labels = []
                 # 優先從多個欄位尋找標題
                 title = info.get('title') or info.get('fulltitle') or f"影片_{info.get('id', '未知')}"
                 dur_str = self.format_duration(info.get('duration'))
@@ -817,6 +873,10 @@ class YouTubeDownloaderGUI:
                 
         except Exception as e:
             err_str = str(e)
+            if "USER_CANCELLED" in err_str or not getattr(self, 'is_analyzing', False):
+                self.root.after(0, lambda: self.update_progress_ui(0, "解析已中斷", "orange"))
+                self.root.after(0, lambda: self.title_label.config(text="解析已手動取消。"))
+                return
             # 抖音專屬中文提示優化
             if "douyin" in url and "Fresh cookies" in err_str:
                 msg = (
@@ -842,7 +902,7 @@ class YouTubeDownloaderGUI:
                 self.root.after(0, lambda: self.update_progress_ui(0, "發生錯誤", "red"))
                 self.root.after(0, lambda: messagebox.showerror("錯誤", f"解析失敗：\n{err_str}"))
         finally:
-            self.root.after(0, lambda: self.analyze_btn.config(state="normal"))
+            self.root.after(0, lambda: self.reset_analyze_button())
 
     def format_duration(self, seconds):
         if not seconds:
@@ -998,6 +1058,11 @@ class YouTubeDownloaderGUI:
             chk = tk.Checkbutton(row_frame, variable=var, command=self.update_selection_count)
             chk.pack(side="left", padx=5)
             
+            status_lbl = tk.Label(row_frame, text="⏳ 等待下載", fg="gray", font=("Arial", 9, "bold"))
+            status_lbl.pack(side="left", padx=5)
+            if hasattr(self, 'playlist_status_labels') and len(self.playlist_status_labels) > i:
+                self.playlist_status_labels[i] = status_lbl
+                
             thumb_label = tk.Label(row_frame, text="等候中", bg="#e0e0e0", width=14, height=3)
             thumb_label.pack(side="left", padx=5)
             
@@ -1070,10 +1135,60 @@ class YouTubeDownloaderGUI:
             speed = ansi_escape.sub('', d.get('_speed_str', 'N/A')).strip()
             eta = ansi_escape.sub('', d.get('_eta_str', 'N/A')).strip()
             
-            self.root.after(0, lambda: self.update_progress_ui(percent_val, f"下載進度: {percent_str} (速度: {speed}, 剩餘: {eta})", "blue"))
+            threads_limit = self.threads_choice.get() if hasattr(self, 'threads_choice') else 1
+            if self.is_playlist and threads_limit > 1:
+                pass
+            else:
+                self.root.after(0, lambda: self.update_progress_ui(percent_val, f"下載進度: {percent_str} (速度: {speed}, 剩餘: {eta})", "blue"))
             
         elif d['status'] == 'finished':
-            self.root.after(0, lambda: self.update_progress_ui(100.0, "單檔下載完成！正在合併影像或轉檔... (此階段無法暫停)", "orange"))
+            threads_limit = self.threads_choice.get() if hasattr(self, 'threads_choice') else 1
+            if not (self.is_playlist and threads_limit > 1):
+                self.root.after(0, lambda: self.update_progress_ui(100.0, "單檔下載完成！正在合併影像或轉檔... (此階段無法暫停)", "orange"))
+
+    def make_progress_hook(self, idx):
+        def hook(d):
+            self.item_progress_hook(idx, d)
+        return hook
+
+    def item_progress_hook(self, idx, d):
+        while self.is_paused:
+            if self.is_cancelled:
+                raise ValueError("USER_CANCELLED")
+            time.sleep(0.5)
+            
+        if self.is_cancelled:
+            raise ValueError("USER_CANCELLED")
+
+        if d['status'] == 'downloading':
+            downloaded = d.get('downloaded_bytes', 0)
+            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+            percent_val = (downloaded / total * 100) if total > 0 else 0.0
+            
+            if self.is_playlist and hasattr(self, 'playlist_status_labels') and len(self.playlist_status_labels) > idx:
+                lbl = self.playlist_status_labels[idx]
+                if lbl and lbl.winfo_exists():
+                    self.root.after(0, lambda: lbl.config(text=f"⚡ 下載中 ({percent_val:.1f}%)", fg="blue"))
+                    
+            threads_limit = self.threads_choice.get() if hasattr(self, 'threads_choice') else 1
+            if self.is_playlist and threads_limit == 1:
+                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                percent_str = ansi_escape.sub('', d.get('_percent_str', f'{percent_val:.1f}%')).strip()
+                speed = ansi_escape.sub('', d.get('_speed_str', 'N/A')).strip()
+                eta = ansi_escape.sub('', d.get('_eta_str', 'N/A')).strip()
+                cur_idx = getattr(self, 'current_download_index', 0) + 1
+                tot_cnt = getattr(self, 'total_download_count', 1)
+                self.root.after(0, lambda: self.update_progress_ui(
+                    percent_val, 
+                    f"({cur_idx}/{tot_cnt}) 下載進度: {percent_str} (速度: {speed}, 剩餘: {eta})", 
+                    "blue"
+                ))
+            
+        elif d['status'] == 'finished':
+            if self.is_playlist and hasattr(self, 'playlist_status_labels') and len(self.playlist_status_labels) > idx:
+                lbl = self.playlist_status_labels[idx]
+                if lbl and lbl.winfo_exists():
+                    self.root.after(0, lambda: lbl.config(text="🔄 合併轉檔中...", fg="orange"))
 
     def start_download(self):
         save_dir = self.download_path.get()
@@ -1094,14 +1209,14 @@ class YouTubeDownloaderGUI:
             entries = self.playlist_all_entries
             for i in selected_indices:
                 vid_url = entries[i].get('url') or entries[i].get('webpage_url')
-                if vid_url:
-                    urls_to_download.append(vid_url)
-                else:
+                if not vid_url:
                     vid_id = entries[i].get('id')
                     if vid_id:
-                        urls_to_download.append(f"https://www.youtube.com/watch?v={vid_id}")
+                        vid_url = f"https://www.youtube.com/watch?v={vid_id}"
+                if vid_url:
+                    urls_to_download.append((i, vid_url))
         else:
-            urls_to_download.append(self.url_entry.get().strip())
+            urls_to_download.append((0, self.url_entry.get().strip()))
 
         self.download_btn.config(state="disabled")
         self.analyze_btn.config(state="disabled")
@@ -1115,7 +1230,23 @@ class YouTubeDownloaderGUI:
         
         threading.Thread(target=self.process_download, args=(urls_to_download, save_dir, fmt, quality), daemon=True).start()
 
-    def process_download(self, urls, save_dir, fmt, quality):
+    def process_download(self, items, save_dir, fmt, quality):
+        threads_limit = self.threads_choice.get() if hasattr(self, 'threads_choice') else 1
+        total = len(items)
+        
+        self.current_download_index = 0
+        self.total_download_count = total
+        self._downloaded_filepath = None
+        
+        # 先將所有被勾選的項目之狀態標記為「等待下載」
+        if self.is_playlist and hasattr(self, 'playlist_status_labels'):
+            for idx, _ in items:
+                if idx < len(self.playlist_status_labels):
+                    lbl = self.playlist_status_labels[idx]
+                    if lbl and lbl.winfo_exists():
+                        lbl.config(text="⏳ 等待下載", fg="gray")
+
+        # 初始化 ydl_opts
         if fmt in ["mp4", "mkv"]:
             if "最高畫質" in quality:
                 format_str = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
@@ -1132,7 +1263,6 @@ class YouTubeDownloaderGUI:
                 'outtmpl': os.path.join(save_dir, '%(title)s [%(id)s].%(ext)s'),
                 'format': format_str,
                 'merge_output_format': fmt,
-                'progress_hooks': [self.progress_hook],
                 'ffmpeg_location': self.app_dir,
                 'color': 'no_color',
                 'nocheckcertificate': True,
@@ -1149,7 +1279,6 @@ class YouTubeDownloaderGUI:
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'wav',
                 }],
-                'progress_hooks': [self.progress_hook],
                 'ffmpeg_location': self.app_dir,
                 'color': 'no_color',
                 'nocheckcertificate': True,
@@ -1172,7 +1301,6 @@ class YouTubeDownloaderGUI:
                     'preferredcodec': 'mp3',
                     'preferredquality': kbps,
                 }],
-                'progress_hooks': [self.progress_hook],
                 'ffmpeg_location': self.app_dir,
                 'color': 'no_color',
                 'nocheckcertificate': True,
@@ -1181,67 +1309,118 @@ class YouTubeDownloaderGUI:
             }
             
         ydl_opts['noplaylist'] = True
-        self._downloaded_filepath = None  # 重置路徑追蹤
-        
-        try:
-            total = len(urls)
-            for i, url in enumerate(urls):
-                if self.is_cancelled:
-                    break
-                    
-                if total > 1:
-                    self.root.after(0, lambda idx=i: self.update_progress_ui(0, f"即將下載清單第 {idx+1}/{total} 部，請稍候...", "blue"))
-                else:
-                    self.root.after(0, lambda: self.update_progress_ui(0, "連線中，準備開始下載...", "blue"))
 
-                # 增加 Cookies 支援
-                browser_choice = self.cookie_browser.get()
-                use_cookies = False
-                if browser_choice == "選擇 .txt 檔案...":
-                    cookie_file = self.cookie_file_path.get()
-                    if os.path.exists(cookie_file):
-                        ydl_opts['cookiefile'] = cookie_file
-                        use_cookies = True
-                elif browser_choice != "無":
-                    ydl_opts['cookiesfrombrowser'] = (browser_choice,)
+        # 定義單個項目的下載執行函數，回傳 (idx, success_status)
+        def download_single_item(item_info):
+            idx, url = item_info
+            
+            # 若已取消，直接回傳
+            if self.is_cancelled:
+                return idx, False
+                
+            # 建立該項目的專屬配置
+            item_opts = ydl_opts.copy()
+            item_opts['progress_hooks'] = [self.make_progress_hook(idx)]
+            
+            # 增加 Cookies 支援
+            browser_choice = self.cookie_browser.get()
+            use_cookies = False
+            if browser_choice == "選擇 .txt 檔案...":
+                cookie_file = self.cookie_file_path.get()
+                if os.path.exists(cookie_file):
+                    item_opts['cookiefile'] = cookie_file
                     use_cookies = True
+            elif browser_choice != "無":
+                item_opts['cookiesfrombrowser'] = (browser_choice,)
+                use_cookies = True
+                
+            # 在 UI 上標記為「下載中」
+            if self.is_playlist and hasattr(self, 'playlist_status_labels') and len(self.playlist_status_labels) > idx:
+                lbl = self.playlist_status_labels[idx]
+                if lbl and lbl.winfo_exists():
+                    self.root.after(0, lambda: lbl.config(text="⚡ 連線下載中", fg="blue"))
                     
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        # 使用 extract_info 並設 download=True 可以直接拿到下載後的完整資訊
-                        download_info = ydl.extract_info(url, download=True)
-                        # 嘗試從 info 中獲取最終路徑
-                        if download_info:
-                            # 如果有合併過，路徑通常在 requested_downloads
-                            if 'requested_downloads' in download_info and download_info['requested_downloads']:
-                                self._downloaded_filepath = download_info['requested_downloads'][0].get('filepath')
-                            else:
-                                self._downloaded_filepath = download_info.get('filepath') or ydl.prepare_filename(download_info)
-                        ret_code = 0 # 成功執行到此代表沒丟出 Exception
-                except Exception as e:
-                    # 智慧容錯：如果是 YouTube 且 Cookies 下載階段報錯，嘗試不帶 Cookies 重試
-                    if use_cookies and ("youtube.com" in url or "youtu.be" in url) and ("cookie" in str(e).lower() or "dpapi" in str(e).lower() or "not copy" in str(e).lower()):
-                        temp_opts = ydl_opts.copy()
+            # 連線與下載
+            filepath = None
+            try:
+                with yt_dlp.YoutubeDL(item_opts) as ydl:
+                    download_info = ydl.extract_info(url, download=True)
+                    if download_info:
+                        if 'requested_downloads' in download_info and download_info['requested_downloads']:
+                            filepath = download_info['requested_downloads'][0].get('filepath')
+                        else:
+                            filepath = download_info.get('filepath') or ydl.prepare_filename(download_info)
+                ret_code = 0
+            except Exception as e:
+                # 智慧容錯：如果是 YouTube 且 Cookies 下載階段報錯，嘗試不帶 Cookies 重試
+                if use_cookies and ("youtube.com" in url or "youtu.be" in url) and ("cookie" in str(e).lower() or "dpapi" in str(e).lower() or "not copy" in str(e).lower()):
+                    try:
+                        temp_opts = item_opts.copy()
                         if "cookiesfrombrowser" in temp_opts: del temp_opts['cookiesfrombrowser']
                         if "cookiefile" in temp_opts: del temp_opts['cookiefile']
                         with yt_dlp.YoutubeDL(temp_opts) as ydl:
                             download_info = ydl.extract_info(url, download=True)
                             if download_info:
                                 if 'requested_downloads' in download_info and download_info['requested_downloads']:
-                                    self._downloaded_filepath = download_info['requested_downloads'][0].get('filepath')
+                                    filepath = download_info['requested_downloads'][0].get('filepath')
                                 else:
-                                    self._downloaded_filepath = download_info.get('filepath') or ydl.prepare_filename(download_info)
-                            ret_code = 0
-                    else:
-                        raise e
-
-                if ret_code != 0:
-                    raise Exception(f"下載過程中斷或失敗 (代碼: {ret_code})")
-            
-                # 下載完畢後的二次確認：確保檔案真的存在於資料夾中
-                self.root.after(0, lambda: self.update_progress_ui(100, "正在完成最後處理...", "blue"))
-                time.sleep(1) # 給予系統一點時間寫入
+                                    filepath = download_info.get('filepath') or ydl.prepare_filename(download_info)
+                        ret_code = 0
+                    except Exception as ex:
+                        ret_code = -1
+                        err_msg = str(ex)
+                else:
+                    ret_code = -1
+                    err_msg = str(e)
                     
+            if ret_code == 0 and filepath and os.path.exists(filepath):
+                # 標記為「已完成」
+                if self.is_playlist and hasattr(self, 'playlist_status_labels') and len(self.playlist_status_labels) > idx:
+                    lbl = self.playlist_status_labels[idx]
+                    if lbl and lbl.winfo_exists():
+                        self.root.after(0, lambda: lbl.config(text="✅ 已完成", fg="green"))
+                if not self.is_playlist:
+                    self._downloaded_filepath = filepath
+                return idx, True
+            else:
+                # 標記為「失敗」
+                if self.is_playlist and hasattr(self, 'playlist_status_labels') and len(self.playlist_status_labels) > idx:
+                    lbl = self.playlist_status_labels[idx]
+                    if lbl and lbl.winfo_exists():
+                        self.root.after(0, lambda: lbl.config(text="❌ 下載失敗", fg="red"))
+                return idx, False
+
+        import concurrent.futures
+        success_count = 0
+        
+        try:
+            # 建立 ThreadPoolExecutor
+            with concurrent.futures.ThreadPoolExecutor(max_workers=threads_limit) as executor:
+                # 提交所有任務
+                futures = {executor.submit(download_single_item, item): item for item in items}
+                
+                # 監聽完成情況
+                for future in concurrent.futures.as_completed(futures):
+                    idx, success = future.result()
+                    self.current_download_index += 1
+                    if success:
+                        success_count += 1
+                        
+                    # 更新整體進度 UI
+                    overall_percent = (self.current_download_index / total) * 100.0
+                    if self.is_playlist:
+                        if threads_limit > 1:
+                            self.root.after(0, lambda p=overall_percent: self.update_progress_ui(
+                                p, 
+                                f"下載進度: ({self.current_download_index}/{total}) 已完成 {success_count} 部 (同時下載: {threads_limit})", 
+                                "blue"
+                            ))
+                        else:
+                            self.root.after(0, lambda p=overall_percent: self.progress_bar.config(value=p))
+                    else:
+                        self.root.after(0, lambda p=overall_percent: self.progress_bar.config(value=p))
+                        
+            # 下載完畢後的二次確認與後處理
             if self.is_cancelled:
                 self.root.after(0, lambda: self.update_progress_ui(0, "下載任務已取消", "red"))
                 self.root.after(0, lambda: messagebox.showinfo("取消", "已成功取消下載任務。\n(未完成的暫存檔已保留，未來重新下載可自動接續進度)"))
@@ -1256,10 +1435,9 @@ class YouTubeDownloaderGUI:
                     self._split_by_chapters(filepath_copy, chapters_copy, title_copy, save_dir)
                 else:
                     self.root.after(0, lambda: self.update_progress_ui(100.0, "所有任務皆已處理完成！", "green"))
-                    self.root.after(0, lambda: messagebox.showinfo("成功", f"全部下載完畢！\n檔案已成功儲存至：\n{save_dir}"))
-                
+                    self.root.after(0, lambda: messagebox.showinfo("成功", f"全部下載完畢！\n共成功下載 {success_count} / {total} 部影音。\n儲存至：\n{save_dir}"))
+                    
         except Exception as e:
-            # 判斷是否為我們主動拋出的取消例外
             err_str = str(e)
             if "USER_CANCELLED" in err_str:
                 self.root.after(0, lambda: self.update_progress_ui(0, "下載任務已取消", "red"))

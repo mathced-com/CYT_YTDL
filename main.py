@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.3.1"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 
@@ -2044,6 +2044,15 @@ class MP3TrimmerTab:
         ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=8)
 
         # 輸出設定
+        # 儲存資料夾 Row
+        self.out_folder_row = tk.Frame(right_frame)
+        self.out_folder_row.pack(fill="x", pady=3)
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Arial", 10, "bold"), width=12, anchor="w").pack(side="left")
+        self.out_folder_var = tk.StringVar()
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Arial", 10), state="readonly")
+        self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Arial", 9)).pack(side="left")
+
         out_frame = tk.Frame(right_frame)
         out_frame.pack(fill="x", pady=3)
         tk.Label(out_frame, text="新檔名：", font=("Arial", 11)).pack(side="left")
@@ -2085,6 +2094,24 @@ class MP3TrimmerTab:
         self.folder_entry.insert(0, path)
         self.folder_entry.config(state="readonly")
 
+    def _browse_out_folder(self):
+        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
+        folder = filedialog.askdirectory(initialdir=initial_dir)
+        if folder:
+            is_writable = True
+            test_file = os.path.join(folder, ".write_test")
+            try:
+                with open(test_file, "w") as f:
+                    pass
+                os.remove(test_file)
+            except Exception:
+                is_writable = False
+            
+            if not is_writable:
+                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
+            else:
+                self.out_folder_var.set(folder)
+
     def _refresh_list(self):
         folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
         self._folder_path = folder
@@ -2102,6 +2129,22 @@ class MP3TrimmerTab:
             return
         filename = self.file_listbox.get(sel[0])
         full_path = os.path.join(self._folder_path, filename)
+        
+        # 智慧唯讀性與可寫性探針檢測，決定預設儲存路徑
+        is_writable = True
+        test_file = os.path.join(self._folder_path, ".write_test")
+        try:
+            with open(test_file, "w") as f:
+                pass
+            os.remove(test_file)
+        except Exception:
+            is_writable = False
+            
+        if is_writable:
+            self.out_folder_var.set(self._folder_path)
+        else:
+            self.out_folder_var.set(self.download_path_var.get())
+            
         self._load_file(full_path)
 
     def _load_file(self, path):
@@ -2566,6 +2609,15 @@ class VideoTrimmerTab:
         tk.Entry(row2, textvariable=self.end_time_str, width=12, font=("Arial", 10)).pack(side="left", padx=5)
         tk.Button(row2, text="📍 標記目前位置", command=self._mark_end, font=("Arial", 9), bg="#E64A19", fg="white").pack(side="left")
         
+        # 儲存資料夾 Row
+        self.out_folder_row = tk.Frame(right_frame)
+        self.out_folder_row.pack(fill="x", pady=5)
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Arial", 10, "bold"), width=12, anchor="w").pack(side="left")
+        self.out_folder_var = tk.StringVar()
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Arial", 10), state="readonly")
+        self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Arial", 9)).pack(side="left")
+
         # 輸出設定
         out_row = tk.Frame(right_frame)
         out_row.pack(fill="x", pady=5)
@@ -2602,6 +2654,42 @@ class VideoTrimmerTab:
         self.folder_entry.insert(0, path)
         self.folder_entry.config(state="readonly")
 
+    def _browse_out_folder(self):
+        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
+        folder = filedialog.askdirectory(initialdir=initial_dir)
+        if folder:
+            is_writable = True
+            test_file = os.path.join(folder, ".write_test")
+            try:
+                with open(test_file, "w") as f:
+                    pass
+                os.remove(test_file)
+            except Exception:
+                is_writable = False
+            
+            if not is_writable:
+                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
+            else:
+                self.out_folder_var.set(folder)
+
+    def _browse_out_folder(self):
+        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
+        folder = filedialog.askdirectory(initialdir=initial_dir)
+        if folder:
+            is_writable = True
+            test_file = os.path.join(folder, ".write_test")
+            try:
+                with open(test_file, "w") as f:
+                    pass
+                os.remove(test_file)
+            except Exception:
+                is_writable = False
+            
+            if not is_writable:
+                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
+            else:
+                self.out_folder_var.set(folder)
+
     def _refresh_list(self):
         folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
         self._folder_path = folder
@@ -2616,6 +2704,22 @@ class VideoTrimmerTab:
         if not sel: return
         filename = self.file_listbox.get(sel[0])
         full_path = os.path.join(self._folder_path, filename)
+        
+        # 智慧唯讀性與可寫性探針檢測，決定預設儲存路徑
+        is_writable = True
+        test_file = os.path.join(self._folder_path, ".write_test")
+        try:
+            with open(test_file, "w") as f:
+                pass
+            os.remove(test_file)
+        except Exception:
+            is_writable = False
+            
+        if is_writable:
+            self.out_folder_var.set(self._folder_path)
+        else:
+            self.out_folder_var.set(self.download_path_var.get())
+            
         self._load_video(full_path)
 
     def _load_video(self, path):
@@ -2818,7 +2922,9 @@ class VideoTrimmerTab:
             messagebox.showerror("錯誤", "起點必須小於終點。")
             return
         out_name = self.out_entry.get().strip() + self.ext_label.cget("text")
-        out_path = os.path.join(self._folder_path, out_name)
+        target_folder = self.out_folder_var.get() or self.download_path_var.get()
+        os.makedirs(target_folder, exist_ok=True)
+        out_path = os.path.join(target_folder, out_name)
         
         self.trim_btn.config(state="disabled")
         self.trim_status.config(text="影片裁剪中（無損模式速度極快）...", fg="blue")
@@ -2888,10 +2994,11 @@ class VideoTrimmerTab:
 
     def _start_audio_extraction(self, fmt):
         base, _ = os.path.splitext(os.path.basename(self.current_file))
-        folder = self._folder_path
+        target_folder = self.out_folder_var.get() or self.download_path_var.get()
+        os.makedirs(target_folder, exist_ok=True)
         counter = 1
         out_filename = f"{base}.{fmt}"
-        out_path = os.path.join(folder, out_filename)
+        out_path = os.path.join(target_folder, out_filename)
         while os.path.exists(out_path):
             out_filename = f"{base}_{counter}.{fmt}"
             out_path = os.path.join(folder, out_filename)
@@ -2965,6 +3072,12 @@ class VideoConverterTab:
         self.info_lf.pack(fill="x", pady=(0, 10))
         self.info_label = tk.Label(self.info_lf, text="請先從左側選擇要轉換的影片或音訊檔案", font=("Arial", 10), fg="gray", justify="left", anchor="w", wraplength=500)
         self.info_label.pack(fill="x")
+        
+        # DVD VOB 合併勾選框 (預設隱藏，檢測到連續 VOB 時才 pack)
+        self.merge_vobs_var = tk.BooleanVar(value=False)
+        self.merge_vobs_chk = tk.Checkbutton(self.info_lf, text="偵測到連續的 DVD VOB 檔案，是否一鍵無縫合併轉檔？", 
+                                             variable=self.merge_vobs_var, font=("Arial", 9, "bold"), fg="#FF5722",
+                                             anchor="w", justify="left", wraplength=480)
 
         # 轉檔參數設定
         params_lf = tk.LabelFrame(right_frame, text="⚙️ 轉檔參數與畫質壓縮設定", font=("Arial", 10, "bold"), padx=15, pady=15)
@@ -2978,6 +3091,15 @@ class VideoConverterTab:
         self.format_combo.set("MP4 (相容性最高)")
         self.format_combo.pack(side="left", fill="x", expand=True)
         self.format_combo.bind("<<ComboboxSelected>>", self._on_format_combo_change)
+
+        # 儲存位置設定 Row
+        self.out_folder_row = tk.Frame(params_lf)
+        self.out_folder_row.pack(fill="x", pady=5)
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Arial", 10, "bold"), width=14, anchor="w").pack(side="left")
+        self.out_folder_var = tk.StringVar()
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Arial", 10), state="readonly")
+        self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Arial", 9)).pack(side="left")
 
         # 解析度降低
         self.row2 = tk.Frame(params_lf)
@@ -3050,6 +3172,24 @@ class VideoConverterTab:
         self.folder_entry.insert(0, path)
         self.folder_entry.config(state="readonly")
 
+    def _browse_out_folder(self):
+        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
+        folder = filedialog.askdirectory(initialdir=initial_dir)
+        if folder:
+            is_writable = True
+            test_file = os.path.join(folder, ".write_test")
+            try:
+                with open(test_file, "w") as f:
+                    pass
+                os.remove(test_file)
+            except Exception:
+                is_writable = False
+            
+            if not is_writable:
+                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
+            else:
+                self.out_folder_var.set(folder)
+
     def _refresh_list(self):
         folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
         self._folder_path = folder
@@ -3058,7 +3198,7 @@ class VideoConverterTab:
         if not folder or not os.path.exists(folder): return
         
         # 支持主流的影片與音訊格式
-        valid_exts = ('.mp4', '.mkv', '.avi', '.flv', '.mov', '.webm', '.ts', '.mp3', '.wav', '.m4a')
+        valid_exts = ('.mp4', '.mkv', '.avi', '.flv', '.mov', '.webm', '.ts', '.mp3', '.wav', '.m4a', '.vob', '.dat')
         files = sorted([f for f in os.listdir(folder) if f.lower().endswith(valid_exts)])
         for f in files: self.file_listbox.insert(tk.END, f)
 
@@ -3076,6 +3216,21 @@ class VideoConverterTab:
         self.info_label.config(text=f"📂 檔名：{filename}\n⚖️ 大小：{size_mb:.2f} MB\n📍 路徑：{full_path}", fg="#333", font=("Arial", 9, "bold"))
         self.convert_btn.config(state="normal")
 
+        # 智慧唯讀性與可寫性探針校驗，決定介面上預設展示的儲存路徑
+        is_writable = True
+        test_file = os.path.join(self._folder_path, ".write_test")
+        try:
+            with open(test_file, "w") as f:
+                pass
+            os.remove(test_file)
+        except Exception:
+            is_writable = False
+            
+        if is_writable:
+            self.out_folder_var.set(self._folder_path)
+        else:
+            self.out_folder_var.set(self.download_path_var.get())
+
         # 自動搜尋同目錄下同名且副檔名為 .srt 的檔案
         base, _ = os.path.splitext(filename)
         srt_name = f"{base}.srt"
@@ -3088,6 +3243,45 @@ class VideoConverterTab:
             self.sub_path_var.set("")
             self.merge_sub_var.set(False)
             self._on_sub_chk_change()
+
+        # 智慧偵測 DVD 連續 VOB 檔案
+        self.detected_vobs = []
+        self.merge_vobs_var.set(False)
+        self.merge_vobs_chk.pack_forget()
+        
+        filename_lower = filename.lower()
+        if filename_lower.endswith(".vob"):
+            import re
+            # DVD 的正片檔案命名通常為 VTS_XX_Y.VOB (其中 Y >= 1)
+            match = re.match(r'^(vts_\d+_)(\d+)\.vob$', filename_lower)
+            if match:
+                prefix = match.group(1)
+                current_idx = int(match.group(2))
+                if current_idx > 0:
+                    vob_files = []
+                    i = 1
+                    while True:
+                        target_name = f"{prefix}{i}.vob"
+                        target_path = None
+                        try:
+                            for f in os.listdir(self._folder_path):
+                                if f.lower() == target_name:
+                                    target_path = os.path.join(self._folder_path, f)
+                                    break
+                        except Exception:
+                            pass
+                        if target_path:
+                            vob_files.append(target_path)
+                            i += 1
+                        else:
+                            break
+                            
+                    if len(vob_files) > 1:
+                        self.detected_vobs = vob_files
+                        first_name = os.path.basename(vob_files[0])
+                        last_name = os.path.basename(vob_files[-1])
+                        self.merge_vobs_chk.config(text=f"✨ 偵測到連續 DVD 影片檔案 ({first_name} ~ {last_name})，是否勾選此處進行一鍵無縫合併轉檔？")
+                        self.merge_vobs_chk.pack(fill="x", anchor="w", padx=5, pady=5)
 
     def _on_format_combo_change(self, event):
         fmt = self.format_combo.get()
@@ -3119,12 +3313,45 @@ class VideoConverterTab:
             self.merge_sub_var.set(True)
             self._on_sub_chk_change()
 
+    def _browse_out_folder(self):
+        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
+        folder = filedialog.askdirectory(initialdir=initial_dir)
+        if folder:
+            # 智慧寫入測試，確保使用者選擇的目錄不是唯讀的！防呆防到底！
+            is_writable = True
+            test_file = os.path.join(folder, ".write_test")
+            try:
+                with open(test_file, "w") as f:
+                    pass
+                os.remove(test_file)
+            except Exception:
+                is_writable = False
+            
+            if not is_writable:
+                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
+            else:
+                self.out_folder_var.set(folder)
+
     def _do_convert(self):
         if not self.current_file: return
         
         in_path = self.current_file
-        folder = self._folder_path
-        base, _ = os.path.splitext(os.path.basename(in_path))
+        target_folder = self.out_folder_var.get()
+        if not target_folder:
+            target_folder = self.download_path_var.get()
+            
+        # 確保儲存路徑實體存在
+        os.makedirs(target_folder, exist_ok=True)
+            
+        # 判斷是否啟用 DVD 連續 VOB 一鍵合併轉檔
+        is_merge = getattr(self, 'detected_vobs', None) and self.merge_vobs_var.get()
+        
+        if is_merge:
+            first_vob = self.detected_vobs[0]
+            last_vob = self.detected_vobs[-1]
+            base = f"{os.path.splitext(os.path.basename(first_vob))[0]}_to_{os.path.splitext(os.path.basename(last_vob))[0]}"
+        else:
+            base, _ = os.path.splitext(os.path.basename(in_path))
         
         # 決定目標副檔名與格式
         fmt_sel = self.format_combo.get()
@@ -3138,33 +3365,45 @@ class VideoConverterTab:
             out_ext = ".wav"
             
         out_name = f"{base}_converted{out_ext}"
-        out_path = os.path.join(folder, out_name)
+        out_path = os.path.join(target_folder, out_name)
         
         # 防撞名機制
         base_out = f"{base}_converted"
         counter = 1
         while os.path.exists(out_path):
-            out_path = os.path.join(folder, f"{base_out}({counter}){out_ext}")
+            out_path = os.path.join(target_folder, f"{base_out}({counter}){out_ext}")
             counter += 1
             
         self.convert_btn.config(state="disabled")
         self.status_label.config(text="🎬 影音轉檔壓縮中，這可能需要幾分鐘，請稍候...", fg="blue")
+            
         self.progress_bar['value'] = 0
         self.progress_label.config(text="正在分析影音結構，請稍候...")
         
         # 背景線程轉檔
-        threading.Thread(target=self._run_ffmpeg_convert, args=(in_path, out_path, fmt_sel), daemon=True).start()
+        vobs = self.detected_vobs if is_merge else None
+        threading.Thread(target=self._run_ffmpeg_convert, args=(in_path, out_path, fmt_sel, vobs), daemon=True).start()
 
-    def _run_ffmpeg_convert(self, in_path, out_path, fmt_sel):
+    def _run_ffmpeg_convert(self, in_path, out_path, fmt_sel, vob_list=None):
         try:
             # 取得影片總時長
-            total_seconds = self._get_video_duration(in_path)
+            if vob_list:
+                total_seconds = sum(self._get_video_duration(p) for p in vob_list)
+            else:
+                total_seconds = self._get_video_duration(in_path)
+                
             if total_seconds > 0:
                 self.parent.after(0, lambda: self.progress_bar.pack(fill="x", pady=5))
                 self.parent.after(0, lambda: self.progress_label.pack(pady=2))
             
             # 基本命令
-            cmd = ["ffmpeg", "-y", "-i", in_path]
+            if vob_list:
+                # 檔名清單，並用 concat 串接，同時指定 cwd=self._folder_path 可完美避開 Windows 絕對路徑冒號與反斜線問題
+                vob_names = [os.path.basename(p) for p in vob_list]
+                concat_str = "concat:" + "|".join(vob_names)
+                cmd = ["ffmpeg", "-y", "-i", concat_str]
+            else:
+                cmd = ["ffmpeg", "-y", "-i", in_path]
             
             if "MP3" in fmt_sel:
                 # 轉為高品質音訊
@@ -3214,6 +3453,7 @@ class VideoConverterTab:
                 encoding="utf-8",
                 errors="ignore",
                 bufsize=1,
+                cwd=self._folder_path,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
 
@@ -3431,6 +3671,15 @@ class MP3MergerTab:
         self.merge_canvas.bind("<Configure>", lambda e: self._draw_canvas())
 
         # 輸出設定
+        # 儲存資料夾 Row (預設為 download_path_var 的值，並可自主選擇)
+        self.out_folder_row = tk.Frame(right_frame)
+        self.out_folder_row.pack(fill="x", pady=5)
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Arial", 10, "bold"), width=12, anchor="w").pack(side="left")
+        self.out_folder_var = tk.StringVar(value=self.download_path_var.get())
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Arial", 10), state="readonly")
+        self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Arial", 9)).pack(side="left")
+
         tk.Label(right_frame, text="合併後檔名：").pack(anchor="w", pady=(10, 0))
         self.out_entry = tk.Entry(right_frame)
         self.out_entry.pack(fill="x", pady=5)
@@ -3465,6 +3714,24 @@ class MP3MergerTab:
         d = self.download_path_var.get()
         if os.path.exists(d):
             os.startfile(d)
+
+    def _browse_out_folder(self):
+        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
+        folder = filedialog.askdirectory(initialdir=initial_dir)
+        if folder:
+            is_writable = True
+            test_file = os.path.join(folder, ".write_test")
+            try:
+                with open(test_file, "w") as f:
+                    pass
+                os.remove(test_file)
+            except Exception:
+                is_writable = False
+            
+            if not is_writable:
+                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
+            else:
+                self.out_folder_var.set(folder)
 
     def _refresh_src_list(self):
         folder = self.download_path_var.get()
@@ -3801,7 +4068,9 @@ class MP3MergerTab:
         if not self.staged_files: return
         out_name = self.out_entry.get().strip()
         if not out_name: return
-        out_path = os.path.join(self.download_path_var.get(), out_name + ".mp3")
+        target_folder = self.out_folder_var.get() or self.download_path_var.get()
+        os.makedirs(target_folder, exist_ok=True)
+        out_path = os.path.join(target_folder, out_name + ".mp3")
         
         # 處理檔名重複
         base = out_name

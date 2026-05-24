@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.3.1"
+APP_VERSION = "2.3.2"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 
@@ -242,14 +242,14 @@ class YouTubeDownloaderGUI:
         except Exception:
             pass
             
-        tk.Label(header_frame, text=f"CYT_網路影音下載器 v{APP_VERSION}", font=("Arial", 18, "bold"), bg="white").pack(side="left")
+        tk.Label(header_frame, text=f"CYT_網路影音下載器 v{APP_VERSION}", font=("Microsoft JhengHei", 18, "bold"), bg="white").pack(side="left")
 
         # 右側使用者回饋按鈕 (Flat UI, 暖橘色)
         self.feedback_btn = tk.Button(
             header_frame, 
             text="💡 使用者回饋", 
             command=self.open_feedback_dialog, 
-            font=("Arial", 10, "bold"), 
+            font=("Microsoft JhengHei", 10, "bold"), 
             bg="#FF9800", 
             fg="white", 
             relief="flat", 
@@ -264,7 +264,7 @@ class YouTubeDownloaderGUI:
             header_frame, 
             text="📖 使用說明", 
             command=self.open_help_dialog, 
-            font=("Arial", 10, "bold"), 
+            font=("Microsoft JhengHei", 10, "bold"), 
             bg="#2196F3", 
             fg="white", 
             relief="flat", 
@@ -309,57 +309,57 @@ class YouTubeDownloaderGUI:
         
         url_frame = tk.Frame(parent)
         url_frame.pack(fill="x", padx=15, pady=5)
-        tk.Label(url_frame, text="網址：", font=("Arial", 12)).pack(side="left")
+        tk.Label(url_frame, text="網址：", font=("Microsoft JhengHei", 12)).pack(side="left")
         
-        self.url_entry = tk.Entry(url_frame, width=35, font=("Arial", 10))
+        self.url_entry = tk.Entry(url_frame, width=35, font=("Microsoft JhengHei", 10))
         self.url_entry.pack(side="left", padx=5, fill="x", expand=True)
         
         # 按鈕順序：貼上、清除、解析
-        tk.Button(url_frame, text="貼上", command=self.paste_url, font=("Arial", 10), bg="#FFEB3B").pack(side="left", padx=2)
+        tk.Button(url_frame, text="貼上", command=self.paste_url, font=("Microsoft JhengHei", 10), bg="#FFEB3B").pack(side="left", padx=2)
         
-        self.clear_btn = tk.Button(url_frame, text="清除網址", command=self.clear_url, font=("Arial", 10))
+        self.clear_btn = tk.Button(url_frame, text="清除網址", command=self.clear_url, font=("Microsoft JhengHei", 10))
         self.clear_btn.pack(side="left", padx=2)
 
-        self.analyze_btn = tk.Button(url_frame, text="解析網址", command=self.start_analyze, bg="#2196F3", fg="white", font=("Arial", 10, "bold"))
+        self.analyze_btn = tk.Button(url_frame, text="解析網址", command=self.start_analyze, bg="#2196F3", fg="white", font=("Microsoft JhengHei", 10, "bold"))
         self.analyze_btn.pack(side="left", padx=2)
         
         # 步驟提示
         hint_text = "執行步驟：\n一、貼上影音來源網址\n二、點擊「解析網址」\n三、點擊「開始下載」"
-        hint_label = tk.Label(url_frame, text=hint_text, fg="#E91E63", font=("Arial", 9, "bold"), justify="left")
+        hint_label = tk.Label(url_frame, text=hint_text, fg="#E91E63", font=("Microsoft JhengHei", 9, "bold"), justify="left")
         hint_label.pack(side="left", padx=5)
         
         # 先建立底部框架並鎖定在視窗最下方，保證不被清單擠出畫面
         bottom_frame = tk.Frame(parent)
         bottom_frame.pack(side="bottom", fill="x", pady=5)
         
-        self.info_frame = tk.LabelFrame(parent, text="影片預覽 / 播放清單", font=("Arial", 10))
+        self.info_frame = tk.LabelFrame(parent, text="影片預覽 / 播放清單", font=("Microsoft JhengHei", 10))
         self.info_frame.pack(fill="both", expand=True, padx=15, pady=5)
         
         self.title_label = tk.Label(self.info_frame, text="請輸入網址並點選「解析網址」", fg="gray", wraplength=680, justify="left")
         self.title_label.pack(pady=5, padx=10)
         
         self.select_btn_frame = tk.Frame(self.info_frame)
-        self.select_all_btn = tk.Button(self.select_btn_frame, text="全部勾選", command=self.select_all, font=("Arial", 10), bg="#4CAF50", fg="white")
+        self.select_all_btn = tk.Button(self.select_btn_frame, text="全部勾選", command=self.select_all, font=("Microsoft JhengHei", 10), bg="#4CAF50", fg="white")
         self.select_all_btn.pack(side="left", padx=5)
         
-        self.deselect_all_btn = tk.Button(self.select_btn_frame, text="取消全選", command=self.deselect_all, font=("Arial", 10))
+        self.deselect_all_btn = tk.Button(self.select_btn_frame, text="取消全選", command=self.deselect_all, font=("Microsoft JhengHei", 10))
         self.deselect_all_btn.pack(side="left", padx=5)
         
         # 本頁全選與本頁取消按鈕，預先建立但不 pack，由 show_playlist 動態決定是否 pack
-        self.select_page_btn = tk.Button(self.select_btn_frame, text="本頁全部勾選", command=self.select_page, font=("Arial", 10), bg="#2196F3", fg="white")
-        self.deselect_page_btn = tk.Button(self.select_btn_frame, text="本頁全部取消", command=self.deselect_page, font=("Arial", 10))
+        self.select_page_btn = tk.Button(self.select_btn_frame, text="本頁全部勾選", command=self.select_page, font=("Microsoft JhengHei", 10), bg="#2196F3", fg="white")
+        self.deselect_page_btn = tk.Button(self.select_btn_frame, text="本頁全部取消", command=self.deselect_page, font=("Microsoft JhengHei", 10))
         
         # 分頁控制
-        self.prev_btn = tk.Button(self.select_btn_frame, text="◀ 上一頁", command=self.prev_page, font=("Arial", 9))
+        self.prev_btn = tk.Button(self.select_btn_frame, text="◀ 上一頁", command=self.prev_page, font=("Microsoft JhengHei", 9))
         self.prev_btn.pack(side="left", padx=10)
-        self.page_label = tk.Label(self.select_btn_frame, text="第 1 / 1 頁", font=("Arial", 9, "bold"))
+        self.page_label = tk.Label(self.select_btn_frame, text="第 1 / 1 頁", font=("Microsoft JhengHei", 9, "bold"))
         self.page_label.pack(side="left")
-        self.next_btn = tk.Button(self.select_btn_frame, text="下一頁 ▶", command=self.next_page, font=("Arial", 9))
+        self.next_btn = tk.Button(self.select_btn_frame, text="下一頁 ▶", command=self.next_page, font=("Microsoft JhengHei", 9))
         self.next_btn.pack(side="left", padx=10)
  
-        self.selection_label = tk.Label(self.select_btn_frame, text="已勾選: 0 / 0", font=("Arial", 10, "bold"), fg="#E91E63")
+        self.selection_label = tk.Label(self.select_btn_frame, text="已勾選: 0 / 0", font=("Microsoft JhengHei", 10, "bold"), fg="#E91E63")
 
-        self.selection_label = tk.Label(self.select_btn_frame, text="已勾選: 0 / 0", font=("Arial", 10, "bold"), fg="#E91E63")
+        self.selection_label = tk.Label(self.select_btn_frame, text="已勾選: 0 / 0", font=("Microsoft JhengHei", 10, "bold"), fg="#E91E63")
         self.selection_label.pack(side="left", padx=15)
         
         self.select_btn_frame.pack(pady=3)
@@ -369,18 +369,18 @@ class YouTubeDownloaderGUI:
         
         format_frame = tk.Frame(bottom_frame)
         format_frame.pack(fill="x", padx=15, pady=3)
-        tk.Label(format_frame, text="格式：", font=("Arial", 12)).pack(side="left")
+        tk.Label(format_frame, text="格式：", font=("Microsoft JhengHei", 12)).pack(side="left")
         tk.Radiobutton(format_frame, text="MP4", variable=self.format_choice, value="mp4", command=self.on_format_change).pack(side="left", padx=2)
         tk.Radiobutton(format_frame, text="MKV", variable=self.format_choice, value="mkv", command=self.on_format_change).pack(side="left", padx=2)
         tk.Radiobutton(format_frame, text="MP3", variable=self.format_choice, value="mp3", command=self.on_format_change).pack(side="left", padx=2)
         tk.Radiobutton(format_frame, text="WAV", variable=self.format_choice, value="wav", command=self.on_format_change).pack(side="left", padx=2)
         
-        tk.Label(format_frame, text="   品質：", font=("Arial", 12)).pack(side="left")
+        tk.Label(format_frame, text="   品質：", font=("Microsoft JhengHei", 12)).pack(side="left")
         self.quality_combo = ttk.Combobox(format_frame, textvariable=self.quality_choice, state="readonly", width=18)
         self.quality_combo.pack(side="left", padx=5)
         self.quality_combo.bind("<<ComboboxSelected>>", self.save_config)
 
-        tk.Label(format_frame, text="   同時下載數：", font=("Arial", 10)).pack(side="left")
+        tk.Label(format_frame, text="   同時下載數：", font=("Microsoft JhengHei", 10)).pack(side="left")
         self.threads_combo = ttk.Combobox(format_frame, textvariable=self.threads_choice, state="readonly", width=5)
         self.threads_combo['values'] = [1, 2, 3, 4, 5]
         self.threads_combo.pack(side="left", padx=5)
@@ -388,8 +388,8 @@ class YouTubeDownloaderGUI:
         
         path_frame = tk.Frame(bottom_frame)
         path_frame.pack(fill="x", padx=15, pady=3)
-        tk.Label(path_frame, text="儲存：", font=("Arial", 12)).pack(side="left")
-        self.path_entry = tk.Entry(path_frame, textvariable=self.download_path, width=40, state="readonly", font=("Arial", 10))
+        tk.Label(path_frame, text="儲存：", font=("Microsoft JhengHei", 12)).pack(side="left")
+        self.path_entry = tk.Entry(path_frame, textvariable=self.download_path, width=40, state="readonly", font=("Microsoft JhengHei", 10))
         self.path_entry.pack(side="left", padx=5, fill="x", expand=True)
         tk.Button(path_frame, text="選擇", command=self.browse_folder).pack(side="left", padx=2)
         tk.Button(path_frame, text="開啟", command=self.open_download_folder, bg="#9C27B0", fg="white").pack(side="left", padx=2)
@@ -397,40 +397,40 @@ class YouTubeDownloaderGUI:
         # Cookies 來源設定
         cookie_frame = tk.Frame(bottom_frame)
         cookie_frame.pack(fill="x", padx=15, pady=3)
-        tk.Label(cookie_frame, text="Cookies 來源：", font=("Arial", 10)).pack(side="left")
+        tk.Label(cookie_frame, text="Cookies 來源：", font=("Microsoft JhengHei", 10)).pack(side="left")
         self.cookie_browser_combo = ttk.Combobox(cookie_frame, textvariable=self.cookie_browser, state="readonly", width=16)
         self.cookie_browser_combo['values'] = ["無", "chrome", "edge", "選擇 .txt 檔案..."]
         self.cookie_browser_combo.pack(side="left", padx=5)
         self.cookie_browser_combo.bind("<<ComboboxSelected>>", self.on_cookie_browser_change)
         
-        self.cookie_tip_label = tk.Label(cookie_frame, text="(下載私人/限定影片時必備)", font=("Arial", 8), fg="gray")
+        self.cookie_tip_label = tk.Label(cookie_frame, text="(下載私人/限定影片時必備)", font=("Microsoft JhengHei", 8), fg="gray")
         self.cookie_tip_label.pack(side="left")
         
-        tk.Button(cookie_frame, text="💡 FB/私人影片下載教學", font=("Arial", 8), command=self.show_fb_tutorial, fg="#1976D2", relief="flat", cursor="hand2").pack(side="left", padx=10)
+        tk.Button(cookie_frame, text="💡 FB/私人影片下載教學", font=("Microsoft JhengHei", 8), command=self.show_fb_tutorial, fg="#1976D2", relief="flat", cursor="hand2").pack(side="left", padx=10)
         
         status_frame = tk.Frame(bottom_frame)
         status_frame.pack(fill="x", padx=15, pady=3)
         self.progress_bar = ttk.Progressbar(status_frame, orient="horizontal", length=740, mode="determinate")
         self.progress_bar.pack(pady=2)
-        self.status_label = tk.Label(status_frame, text="等待解析...", fg="blue", font=("Arial", 10))
+        self.status_label = tk.Label(status_frame, text="等待解析...", fg="blue", font=("Microsoft JhengHei", 10))
         self.status_label.pack(pady=2)
         
         # 執行與控制按鈕區
         btn_frame = tk.Frame(bottom_frame)
         btn_frame.pack(pady=5)
-        self.download_btn = tk.Button(btn_frame, text="開始下載", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", width=12, command=self.start_download, state="disabled")
+        self.download_btn = tk.Button(btn_frame, text="開始下載", font=("Microsoft JhengHei", 12, "bold"), bg="#4CAF50", fg="white", width=12, command=self.start_download, state="disabled")
         self.download_btn.pack(side="left", padx=5)
         
-        self.pause_btn = tk.Button(btn_frame, text="暫停", font=("Arial", 10), command=self.toggle_pause, state="disabled", width=8)
+        self.pause_btn = tk.Button(btn_frame, text="暫停", font=("Microsoft JhengHei", 10), command=self.toggle_pause, state="disabled", width=8)
         self.pause_btn.pack(side="left", padx=5)
         
-        self.cancel_btn = tk.Button(btn_frame, text="取消", font=("Arial", 10), command=self.cancel_download, state="disabled", bg="#f44336", fg="white", width=8)
+        self.cancel_btn = tk.Button(btn_frame, text="取消", font=("Microsoft JhengHei", 10), command=self.cancel_download, state="disabled", bg="#f44336", fg="white", width=8)
         self.cancel_btn.pack(side="left", padx=5)
         
         # 移除 frozen 限制，讓 exe 使用者也能修復核心
-        tk.Button(btn_frame, text="修復下載核心", command=self.update_ytdlp, bg="#FF9800", fg="white", font=("Arial", 9)).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="修復下載核心", command=self.update_ytdlp, bg="#FF9800", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left", padx=5)
             
-        tk.Button(btn_frame, text="檢查主程式更新", command=self.check_app_update, bg="#FF9800", fg="white", font=("Arial", 9)).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="檢查主程式更新", command=self.check_app_update, bg="#FF9800", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left", padx=5)
 
     def select_all(self):
         for var in self.playlist_all_vars:
@@ -931,7 +931,7 @@ class YouTubeDownloaderGUI:
                         dialog.geometry(f"+{x}+{y}")
 
                         msg = f"偵測到龐大的播放清單 (共 {total} 部影片)！\n\n請選擇後續動作：\n\n【 1 】載入前 50 筆清單讓我手動勾選。\n【 2 】分頁顯示全部清單進行勾選。\n【取消】取消解析。"
-                        tk.Label(dialog, text=msg, justify="left", font=("Arial", 11), padx=20, pady=20).pack()
+                        tk.Label(dialog, text=msg, justify="left", font=("Microsoft JhengHei", 11), padx=20, pady=20).pack()
 
                         btn_frame = tk.Frame(dialog)
                         btn_frame.pack(side="bottom", pady=20)
@@ -949,8 +949,8 @@ class YouTubeDownloaderGUI:
                                 self.analyze_btn.config(state="normal")
                                 self.title_label.config(text="請輸入網址並點選「解析網址」")
 
-                        tk.Button(btn_frame, text=" 1 ", width=10, command=lambda: on_choice(1), font=("Arial", 10, "bold"), bg="#2196F3", fg="white").pack(side="left", padx=10)
-                        tk.Button(btn_frame, text=" 2 ", width=10, command=lambda: on_choice(2), font=("Arial", 10, "bold"), bg="#4CAF50", fg="white").pack(side="left", padx=10)
+                        tk.Button(btn_frame, text=" 1 ", width=10, command=lambda: on_choice(1), font=("Microsoft JhengHei", 10, "bold"), bg="#2196F3", fg="white").pack(side="left", padx=10)
+                        tk.Button(btn_frame, text=" 2 ", width=10, command=lambda: on_choice(2), font=("Microsoft JhengHei", 10, "bold"), bg="#4CAF50", fg="white").pack(side="left", padx=10)
                         tk.Button(btn_frame, text="取消", width=10, command=lambda: on_choice(0)).pack(side="left", padx=10)
 
                     self.root.after(0, ask_playlist_action)
@@ -1025,7 +1025,7 @@ class YouTubeDownloaderGUI:
         row_frame = tk.Frame(self.list_frame.scrollable_frame, pady=5)
         row_frame.pack(fill="x", anchor="w")
         
-        txt_label = tk.Label(row_frame, text=f"💡 為避免介面卡頓，已隱藏清單明細。\n\n共有 {len(entries)} 部影片已準備就緒！\n請確認下方的「格式」與「儲存資料夾」無誤後，點擊「開始下載」即可自動下載全集。", justify="left", wraplength=500, font=("Arial", 11, "bold"), fg="#2196F3")
+        txt_label = tk.Label(row_frame, text=f"💡 為避免介面卡頓，已隱藏清單明細。\n\n共有 {len(entries)} 部影片已準備就緒！\n請確認下方的「格式」與「儲存資料夾」無誤後，點擊「開始下載」即可自動下載全集。", justify="left", wraplength=500, font=("Microsoft JhengHei", 11, "bold"), fg="#2196F3")
         txt_label.pack(side="left", anchor="w", padx=20, pady=20)
         
         self.playlist_entries = entries
@@ -1053,7 +1053,7 @@ class YouTubeDownloaderGUI:
         thumb_label = tk.Label(row_frame, text="無圖片", bg="#e0e0e0", width=14, height=3)
         thumb_label.pack(side="left", padx=5)
         
-        txt_label = tk.Label(row_frame, text=f"{title}\n時間: {dur_str.strip() if dur_str else '未知'}", justify="left", wraplength=500, font=("Arial", 10))
+        txt_label = tk.Label(row_frame, text=f"{title}\n時間: {dur_str.strip() if dur_str else '未知'}", justify="left", wraplength=500, font=("Microsoft JhengHei", 10))
         txt_label.pack(side="left", anchor="w", padx=10)
         
         if HAS_PIL and thumb_url:
@@ -1072,7 +1072,7 @@ class YouTubeDownloaderGUI:
                 chapter_frame,
                 text=f"✂️ 依章節分割為多個檔案（偵測到 {len(chapters)} 個章節）",
                 variable=self.split_by_chapters,
-                font=("Arial", 10, "bold"),
+                font=("Microsoft JhengHei", 10, "bold"),
                 fg="#7B1FA2",
                 command=self._on_chapter_split_toggle
             )
@@ -1083,7 +1083,7 @@ class YouTubeDownloaderGUI:
                 self.list_frame.scrollable_frame,
                 text=self._build_chapter_preview(chapters),
                 justify="left",
-                font=("Arial", 8),
+                font=("Microsoft JhengHei", 8),
                 fg="#555555",
                 wraplength=700
             )
@@ -1169,7 +1169,7 @@ class YouTubeDownloaderGUI:
             chk = tk.Checkbutton(row_frame, variable=var, command=self.update_selection_count)
             chk.pack(side="left", padx=5)
             
-            status_lbl = tk.Label(row_frame, text="⏳ 等待下載", fg="gray", font=("Arial", 9, "bold"))
+            status_lbl = tk.Label(row_frame, text="⏳ 等待下載", fg="gray", font=("Microsoft JhengHei", 9, "bold"))
             status_lbl.pack(side="left", padx=5)
             if hasattr(self, 'playlist_status_labels') and len(self.playlist_status_labels) > i:
                 self.playlist_status_labels[i] = status_lbl
@@ -1179,7 +1179,7 @@ class YouTubeDownloaderGUI:
             
             dur_str = self.format_duration(entry.get('duration'))
             title_text = entry.get('title', f'影片 {i+1}')
-            txt_label = tk.Label(row_frame, text=f"{i+1}. {title_text}\n時間: {dur_str.strip() if dur_str else '未知'}", justify="left", wraplength=450, font=("Arial", 10))
+            txt_label = tk.Label(row_frame, text=f"{i+1}. {title_text}\n時間: {dur_str.strip() if dur_str else '未知'}", justify="left", wraplength=450, font=("Microsoft JhengHei", 10))
             txt_label.pack(side="left", anchor="w")
             
             if HAS_PIL:
@@ -1663,7 +1663,7 @@ class YouTubeDownloaderGUI:
         main_frame.pack(fill="both", expand=True)
         
         # 標題
-        title_lbl = tk.Label(main_frame, text="📖 CYT_網路影音下載器 使用說明書", font=("Arial", 14, "bold"), bg="#F5F5F5", fg="#1976D2")
+        title_lbl = tk.Label(main_frame, text="📖 CYT_網路影音下載器 使用說明書", font=("Microsoft JhengHei", 14, "bold"), bg="#F5F5F5", fg="#1976D2")
         title_lbl.pack(anchor="w", pady=(0, 10))
         
         # 文字展示區 (加上 Scrollbar)
@@ -1682,7 +1682,7 @@ class YouTubeDownloaderGUI:
         text_area.config(state="disabled")
         
         # 關閉按鈕
-        close_btn = tk.Button(main_frame, text="關閉說明", command=help_win.destroy, font=("Arial", 10, "bold"), bg="#9E9E9E", fg="white", relief="flat", padx=15, pady=5, cursor="hand2")
+        close_btn = tk.Button(main_frame, text="關閉說明", command=help_win.destroy, font=("Microsoft JhengHei", 10, "bold"), bg="#9E9E9E", fg="white", relief="flat", padx=15, pady=5, cursor="hand2")
         close_btn.pack(pady=(10, 0))
 
     def open_feedback_dialog(self):
@@ -1704,7 +1704,7 @@ class YouTubeDownloaderGUI:
         top_bar = tk.Frame(dialog, bg="#FF9800", height=4)
         top_bar.pack(fill="x")
         
-        tk.Label(dialog, text="💡 用戶問題回報與功能許願", font=("Arial", 14, "bold"), fg="#333", pady=10).pack()
+        tk.Label(dialog, text="💡 用戶問題回報與功能許願", font=("Microsoft JhengHei", 14, "bold"), fg="#333", pady=10).pack()
         
         # 表單容器
         form_frame = tk.Frame(dialog, padx=20, pady=10)
@@ -1713,30 +1713,30 @@ class YouTubeDownloaderGUI:
         # 姓名
         row1 = tk.Frame(form_frame)
         row1.pack(fill="x", pady=5)
-        tk.Label(row1, text="您的稱呼：*", font=("Arial", 10, "bold"), width=10, anchor="w").pack(side="left")
-        name_entry = tk.Entry(row1, font=("Arial", 10))
+        tk.Label(row1, text="您的稱呼：*", font=("Microsoft JhengHei", 10, "bold"), width=10, anchor="w").pack(side="left")
+        name_entry = tk.Entry(row1, font=("Microsoft JhengHei", 10))
         name_entry.pack(side="left", fill="x", expand=True)
         
         # E-mail
         row2 = tk.Frame(form_frame)
         row2.pack(fill="x", pady=5)
-        tk.Label(row2, text="聯絡信箱：", font=("Arial", 10), width=10, anchor="w").pack(side="left")
-        email_entry = tk.Entry(row2, font=("Arial", 10))
+        tk.Label(row2, text="聯絡信箱：", font=("Microsoft JhengHei", 10), width=10, anchor="w").pack(side="left")
+        email_entry = tk.Entry(row2, font=("Microsoft JhengHei", 10))
         email_entry.pack(side="left", fill="x", expand=True)
         
         # 類別
         row3 = tk.Frame(form_frame)
         row3.pack(fill="x", pady=5)
-        tk.Label(row3, text="回饋類別：", font=("Arial", 10), width=10, anchor="w").pack(side="left")
-        type_combo = ttk.Combobox(row3, values=["問題回報 🐛", "功能建議 💡", "其他 ✉️"], state="readonly", font=("Arial", 9))
+        tk.Label(row3, text="回饋類別：", font=("Microsoft JhengHei", 10), width=10, anchor="w").pack(side="left")
+        type_combo = ttk.Combobox(row3, values=["問題回報 🐛", "功能建議 💡", "其他 ✉️"], state="readonly", font=("Microsoft JhengHei", 9))
         type_combo.set("問題回報 🐛")
         type_combo.pack(side="left", fill="x", expand=True)
         
         # 內容
         row4 = tk.Frame(form_frame)
         row4.pack(fill="both", expand=True, pady=5)
-        tk.Label(row4, text="詳細說明：*", font=("Arial", 10, "bold"), width=10, anchor="nw").pack(side="left", pady=(3,0))
-        content_text = tk.Text(row4, font=("Arial", 10), height=8, wrap="word")
+        tk.Label(row4, text="詳細說明：*", font=("Microsoft JhengHei", 10, "bold"), width=10, anchor="nw").pack(side="left", pady=(3,0))
+        content_text = tk.Text(row4, font=("Microsoft JhengHei", 10), height=8, wrap="word")
         content_text.pack(side="left", fill="both", expand=True)
         
         # 按鈕區
@@ -1763,8 +1763,8 @@ class YouTubeDownloaderGUI:
             if messagebox.askyesno("送出確認", confirm_msg, parent=dialog):
                 self.send_feedback(name, email, feedback_type, content, dialog)
                 
-        tk.Button(btn_frame, text="🚀 送出回饋", bg="#4CAF50", fg="white", font=("Arial", 11, "bold"), width=15, command=on_submit).pack(side="right", padx=30)
-        tk.Button(btn_frame, text="取消", font=("Arial", 11), width=10, command=dialog.destroy).pack(side="left", padx=30)
+        tk.Button(btn_frame, text="🚀 送出回饋", bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 11, "bold"), width=15, command=on_submit).pack(side="right", padx=30)
+        tk.Button(btn_frame, text="取消", font=("Microsoft JhengHei", 11), width=10, command=dialog.destroy).pack(side="left", padx=30)
 
     def send_feedback(self, name, email, feedback_type, content, dialog):
         # 顯示發送中提示並鎖定按鈕
@@ -1930,27 +1930,27 @@ class MP3TrimmerTab:
         left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
         left_frame.pack_propagate(False)
 
-        tk.Label(left_frame, text="MP3 檔案列表", font=("Arial", 11, "bold")).pack(anchor="w")
+        tk.Label(left_frame, text="MP3 檔案列表", font=("Microsoft JhengHei", 11, "bold")).pack(anchor="w")
 
         folder_frame = tk.Frame(left_frame)
         folder_frame.pack(fill="x", pady=3)
-        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Arial", 8))
+        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Microsoft JhengHei", 8))
         self.folder_entry.pack(side="left", fill="x", expand=True)
-        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Arial", 8)).pack(side="left", padx=2)
-        tk.Button(folder_frame, text="開啟", command=self._open_folder, font=("Arial", 8)).pack(side="left", padx=2)
+        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
+        tk.Button(folder_frame, text="開啟", command=self._open_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
 
-        self.file_listbox = tk.Listbox(left_frame, font=("Arial", 9), selectmode="single", activestyle="dotbox")
+        self.file_listbox = tk.Listbox(left_frame, font=("Microsoft JhengHei", 9), selectmode="single", activestyle="dotbox")
         self.file_listbox.pack(fill="both", expand=True, pady=5)
         self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
 
-        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Arial", 9)).pack(fill="x")
+        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Microsoft JhengHei", 9)).pack(fill="x")
 
         # === 右側：控制區 ===
         right_frame = tk.Frame(self.parent)
         right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
 
         # 檔名顯示
-        self.file_label = tk.Label(right_frame, text="尚未選取檔案", font=("Arial", 10, "bold"),
+        self.file_label = tk.Label(right_frame, text="尚未選取檔案", font=("Microsoft JhengHei", 10, "bold"),
                                    fg="#1565C0", wraplength=480, justify="left")
         self.file_label.pack(anchor="w", pady=(0, 5))
 
@@ -1958,20 +1958,20 @@ class MP3TrimmerTab:
         ctrl_frame = tk.Frame(right_frame)
         ctrl_frame.pack(anchor="w", pady=3)
         tk.Button(ctrl_frame, text="⏮ -5s", command=lambda: self._seek_relative(-5000),
-                  font=("Arial", 9), width=5).pack(side="left", padx=1)
+                  font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
         tk.Button(ctrl_frame, text="◀ -1s", command=lambda: self._seek_relative(-1000),
-                  font=("Arial", 9), width=5).pack(side="left", padx=1)
+                  font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
         self.play_btn = tk.Button(ctrl_frame, text="▶ 播放", command=self._toggle_play,
-                                  font=("Arial", 11, "bold"), bg="#4CAF50", fg="white", width=8, state="disabled")
+                                  font=("Microsoft JhengHei", 11, "bold"), bg="#4CAF50", fg="white", width=8, state="disabled")
         self.play_btn.pack(side="left", padx=4)
         self.stop_btn = tk.Button(ctrl_frame, text="⏹ 停止", command=self._stop,
-                                  font=("Arial", 11), width=7, state="disabled")
+                                  font=("Microsoft JhengHei", 11), width=7, state="disabled")
         self.stop_btn.pack(side="left", padx=2)
         tk.Button(ctrl_frame, text="+1s ▶", command=lambda: self._seek_relative(1000),
-                  font=("Arial", 9), width=5).pack(side="left", padx=1)
+                  font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
         tk.Button(ctrl_frame, text="+5s ⏭", command=lambda: self._seek_relative(5000),
-                  font=("Arial", 9), width=5).pack(side="left", padx=1)
-        self.time_label = tk.Label(ctrl_frame, text="00:00 / 00:00", font=("Arial", 11), fg="#333")
+                  font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
+        self.time_label = tk.Label(ctrl_frame, text="00:00 / 00:00", font=("Microsoft JhengHei", 11), fg="#333")
         self.time_label.pack(side="left", padx=10)
 
         # 自訂 Canvas 進度條（顯示裁剪範圍色塊與起終點標記）
@@ -1990,56 +1990,56 @@ class MP3TrimmerTab:
         legend_frame.pack(anchor="w", pady=(2, 2))
         for color, label in [("#81C784", "裁剪範圍"), ("#1976D2", "起點"), ("#E64A19", "終點"), ("#EF5350", "播放位置")]:
             tk.Frame(legend_frame, bg=color, width=12, height=12).pack(side="left", padx=2)
-            tk.Label(legend_frame, text=label, font=("Arial", 8), fg="#555").pack(side="left", padx=(0, 8))
+            tk.Label(legend_frame, text=label, font=("Microsoft JhengHei", 8), fg="#555").pack(side="left", padx=(0, 8))
 
         ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=5)
 
         # === 裁剪設定 ===
-        trim_lf = tk.LabelFrame(right_frame, text="✂️ 裁剪設定", font=("Arial", 10, "bold"), padx=10, pady=6)
+        trim_lf = tk.LabelFrame(right_frame, text="✂️ 裁剪設定", font=("Microsoft JhengHei", 10, "bold"), padx=10, pady=6)
         trim_lf.pack(fill="x", pady=3)
 
         # 試聽與循環播放
         preview_row = tk.Frame(trim_lf)
         preview_row.pack(fill="x", pady=(2, 5))
         self.preview_btn = tk.Button(preview_row, text="▶ 播放標記區段", command=self._preview_section,
-                                     font=("Arial", 10, "bold"), bg="#7B1FA2", fg="white", state="disabled", width=14)
+                                     font=("Microsoft JhengHei", 10, "bold"), bg="#7B1FA2", fg="white", state="disabled", width=14)
         self.preview_btn.pack(side="left", padx=(0, 5))
         
         self.preview_toggle_btn = tk.Button(preview_row, text="▶ 播放 / 暫停", command=self._preview_toggle,
-                                            font=("Arial", 10, "bold"), bg="#673AB7", fg="white", state="disabled", width=12)
+                                            font=("Microsoft JhengHei", 10, "bold"), bg="#673AB7", fg="white", state="disabled", width=12)
         self.preview_toggle_btn.pack(side="left", padx=5)
         
         tk.Checkbutton(preview_row, text="🔁 循環播放", variable=self._loop_var,
-                       font=("Arial", 10), fg="#4A148C").pack(side="left")
-        self.duration_label = tk.Label(preview_row, text="預計長度：0秒", font=("Arial", 10, "bold"), fg="#E91E63")
+                       font=("Microsoft JhengHei", 10), fg="#4A148C").pack(side="left")
+        self.duration_label = tk.Label(preview_row, text="預計長度：0秒", font=("Microsoft JhengHei", 10, "bold"), fg="#E91E63")
         self.duration_label.pack(side="left", padx=15)
         ttk.Separator(trim_lf, orient="horizontal").pack(fill="x", pady=(0, 4))
 
         # 起點
         start_row = tk.Frame(trim_lf)
         start_row.pack(fill="x", pady=3)
-        tk.Label(start_row, text="起點：", font=("Arial", 11), width=5).pack(side="left")
-        self.start_entry = tk.Entry(start_row, textvariable=self.start_time_str, width=10, font=("Arial", 11))
+        tk.Label(start_row, text="起點：", font=("Microsoft JhengHei", 11), width=5).pack(side="left")
+        self.start_entry = tk.Entry(start_row, textvariable=self.start_time_str, width=10, font=("Microsoft JhengHei", 11))
         self.start_entry.pack(side="left", padx=4)
         tk.Button(start_row, text="◀ -0.1s", command=lambda: self._adjust('start', -0.1),
-                  font=("Arial", 9), width=6).pack(side="left", padx=2)
+                  font=("Microsoft JhengHei", 9), width=6).pack(side="left", padx=2)
         tk.Button(start_row, text="+0.1s ▶", command=lambda: self._adjust('start', +0.1),
-                  font=("Arial", 9), width=6).pack(side="left", padx=2)
+                  font=("Microsoft JhengHei", 9), width=6).pack(side="left", padx=2)
         tk.Button(start_row, text="📍 標記目前位置", command=self._mark_start,
-                  font=("Arial", 10), bg="#1976D2", fg="white").pack(side="left", padx=8)
+                  font=("Microsoft JhengHei", 10), bg="#1976D2", fg="white").pack(side="left", padx=8)
 
         # 終點
         end_row = tk.Frame(trim_lf)
         end_row.pack(fill="x", pady=3)
-        tk.Label(end_row, text="終點：", font=("Arial", 11), width=5).pack(side="left")
-        self.end_entry = tk.Entry(end_row, textvariable=self.end_time_str, width=10, font=("Arial", 11))
+        tk.Label(end_row, text="終點：", font=("Microsoft JhengHei", 11), width=5).pack(side="left")
+        self.end_entry = tk.Entry(end_row, textvariable=self.end_time_str, width=10, font=("Microsoft JhengHei", 11))
         self.end_entry.pack(side="left", padx=4)
         tk.Button(end_row, text="◀ -0.1s", command=lambda: self._adjust('end', -0.1),
-                  font=("Arial", 9), width=6).pack(side="left", padx=2)
+                  font=("Microsoft JhengHei", 9), width=6).pack(side="left", padx=2)
         tk.Button(end_row, text="+0.1s ▶", command=lambda: self._adjust('end', +0.1),
-                  font=("Arial", 9), width=6).pack(side="left", padx=2)
+                  font=("Microsoft JhengHei", 9), width=6).pack(side="left", padx=2)
         tk.Button(end_row, text="📍 標記目前位置", command=self._mark_end,
-                  font=("Arial", 10), bg="#E64A19", fg="white").pack(side="left", padx=8)
+                  font=("Microsoft JhengHei", 10), bg="#E64A19", fg="white").pack(side="left", padx=8)
 
         ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=8)
 
@@ -2047,28 +2047,28 @@ class MP3TrimmerTab:
         # 儲存資料夾 Row
         self.out_folder_row = tk.Frame(right_frame)
         self.out_folder_row.pack(fill="x", pady=3)
-        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Arial", 10, "bold"), width=12, anchor="w").pack(side="left")
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 10, "bold"), width=12, anchor="w").pack(side="left")
         self.out_folder_var = tk.StringVar()
-        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Arial", 10), state="readonly")
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Microsoft JhengHei", 10), state="readonly")
         self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Arial", 9)).pack(side="left")
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left")
 
         out_frame = tk.Frame(right_frame)
         out_frame.pack(fill="x", pady=3)
-        tk.Label(out_frame, text="新檔名：", font=("Arial", 11)).pack(side="left")
-        self.out_entry = tk.Entry(out_frame, font=("Arial", 10), width=35)
+        tk.Label(out_frame, text="新檔名：", font=("Microsoft JhengHei", 11)).pack(side="left")
+        self.out_entry = tk.Entry(out_frame, font=("Microsoft JhengHei", 10), width=35)
         self.out_entry.pack(side="left", padx=5, fill="x", expand=True)
-        tk.Label(out_frame, text=".mp3", font=("Arial", 11)).pack(side="left")
+        tk.Label(out_frame, text=".mp3", font=("Microsoft JhengHei", 11)).pack(side="left")
 
         # 裁剪按鈕
         trim_btn_frame = tk.Frame(right_frame)
         trim_btn_frame.pack(pady=10)
         self.trim_btn = tk.Button(trim_btn_frame, text="✂️  裁剪並儲存新檔案", command=self._do_trim,
-                                  font=("Arial", 13, "bold"), bg="#E53935", fg="white",
+                                  font=("Microsoft JhengHei", 13, "bold"), bg="#E53935", fg="white",
                                   width=25, height=2, state="disabled")
         self.trim_btn.pack()
 
-        self.trim_status = tk.Label(right_frame, text="", font=("Arial", 10), fg="green")
+        self.trim_status = tk.Label(right_frame, text="", font=("Microsoft JhengHei", 10), fg="green")
         self.trim_status.pack()
 
         # 初始化載入下載資料夾
@@ -2523,19 +2523,19 @@ class VideoTrimmerTab:
         left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
         left_frame.pack_propagate(False)
 
-        tk.Label(left_frame, text="影片檔案列表", font=("Arial", 11, "bold")).pack(anchor="w")
+        tk.Label(left_frame, text="影片檔案列表", font=("Microsoft JhengHei", 11, "bold")).pack(anchor="w")
 
         folder_frame = tk.Frame(left_frame)
         folder_frame.pack(fill="x", pady=3)
-        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Arial", 8))
+        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Microsoft JhengHei", 8))
         self.folder_entry.pack(side="left", fill="x", expand=True)
-        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Arial", 8)).pack(side="left", padx=2)
+        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
 
-        self.file_listbox = tk.Listbox(left_frame, font=("Arial", 9), selectmode="single", activestyle="dotbox")
+        self.file_listbox = tk.Listbox(left_frame, font=("Microsoft JhengHei", 9), selectmode="single", activestyle="dotbox")
         self.file_listbox.pack(fill="both", expand=True, pady=5)
         self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
 
-        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Arial", 9)).pack(fill="x")
+        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Microsoft JhengHei", 9)).pack(fill="x")
 
         # === 右側：控制區 ===
         right_frame = tk.Frame(self.parent)
@@ -2545,25 +2545,25 @@ class VideoTrimmerTab:
         self.video_container = tk.Frame(right_frame, bg="black", height=280)
         self.video_container.pack(fill="x", pady=(0, 5))
         self.video_container.pack_propagate(False)
-        self.video_label = tk.Label(self.video_container, text="請從左側選取影片進行預覽", fg="white", bg="black", font=("Arial", 10))
+        self.video_label = tk.Label(self.video_container, text="請從左側選取影片進行預覽", fg="white", bg="black", font=("Microsoft JhengHei", 10))
         self.video_label.place(relx=0.5, rely=0.5, anchor="center")
 
         # 播放控制按鈕
         ctrl_frame = tk.Frame(right_frame)
         ctrl_frame.pack(anchor="w", pady=3)
-        tk.Button(ctrl_frame, text="⏮ -5s", command=lambda: self._seek_relative(-5000), font=("Arial", 9), width=5).pack(side="left", padx=1)
-        tk.Button(ctrl_frame, text="◀ -1s", command=lambda: self._seek_relative(-1000), font=("Arial", 9), width=5).pack(side="left", padx=1)
-        tk.Button(ctrl_frame, text="⏪ -0.1s", command=lambda: self._seek_relative(-100), font=("Arial", 8), width=6).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="⏮ -5s", command=lambda: self._seek_relative(-5000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="◀ -1s", command=lambda: self._seek_relative(-1000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="⏪ -0.1s", command=lambda: self._seek_relative(-100), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=1)
         
         self.play_btn = tk.Button(ctrl_frame, text="▶ 播放", command=self._toggle_play,
-                                  font=("Arial", 11, "bold"), bg="#2196F3", fg="white", width=8, state="disabled")
+                                  font=("Microsoft JhengHei", 11, "bold"), bg="#2196F3", fg="white", width=8, state="disabled")
         self.play_btn.pack(side="left", padx=4)
         
-        tk.Button(ctrl_frame, text="+0.1s ⏩", command=lambda: self._seek_relative(100), font=("Arial", 8), width=6).pack(side="left", padx=1)
-        tk.Button(ctrl_frame, text="+1s ▶", command=lambda: self._seek_relative(1000), font=("Arial", 9), width=5).pack(side="left", padx=1)
-        tk.Button(ctrl_frame, text="+5s ⏭", command=lambda: self._seek_relative(5000), font=("Arial", 9), width=5).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="+0.1s ⏩", command=lambda: self._seek_relative(100), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="+1s ▶", command=lambda: self._seek_relative(1000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="+5s ⏭", command=lambda: self._seek_relative(5000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
         
-        self.time_label = tk.Label(ctrl_frame, text="00:00 / 00:00", font=("Arial", 11), fg="#333")
+        self.time_label = tk.Label(ctrl_frame, text="00:00 / 00:00", font=("Microsoft JhengHei", 11), fg="#333")
         self.time_label.pack(side="left", padx=10)
 
         # Canvas 進度條
@@ -2576,67 +2576,67 @@ class VideoTrimmerTab:
         self.trim_canvas.bind("<Configure>", lambda e: self._draw_trim_canvas())
 
         # 影片裁剪設定區
-        trim_lf = tk.LabelFrame(right_frame, text="✂️ 影片裁剪設定", font=("Arial", 10, "bold"), padx=10, pady=6)
+        trim_lf = tk.LabelFrame(right_frame, text="✂️ 影片裁剪設定", font=("Microsoft JhengHei", 10, "bold"), padx=10, pady=6)
         trim_lf.pack(fill="x", pady=5)
 
         # 播放與循環播放
         row0 = tk.Frame(trim_lf)
         row0.pack(fill="x", pady=(2, 5))
         self.preview_btn = tk.Button(row0, text="▶ 播放標記區段", command=self._preview_section,
-                                     font=("Arial", 10, "bold"), bg="#7B1FA2", fg="white", state="disabled", width=14)
+                                     font=("Microsoft JhengHei", 10, "bold"), bg="#7B1FA2", fg="white", state="disabled", width=14)
         self.preview_btn.pack(side="left", padx=(0, 5))
         
         self.preview_toggle_btn = tk.Button(row0, text="▶ 播放 / 暫停", command=self._preview_toggle,
-                                            font=("Arial", 10, "bold"), bg="#673AB7", fg="white", state="disabled", width=12)
+                                            font=("Microsoft JhengHei", 10, "bold"), bg="#673AB7", fg="white", state="disabled", width=12)
         self.preview_toggle_btn.pack(side="left", padx=5)
         
         tk.Checkbutton(row0, text="🔁 循環播放", variable=self._loop_var,
-                       font=("Arial", 10), fg="#4A148C").pack(side="left")
-        self.duration_label = tk.Label(row0, text="預計長度：0秒", font=("Arial", 10, "bold"), fg="#E91E63")
+                       font=("Microsoft JhengHei", 10), fg="#4A148C").pack(side="left")
+        self.duration_label = tk.Label(row0, text="預計長度：0秒", font=("Microsoft JhengHei", 10, "bold"), fg="#E91E63")
         self.duration_label.pack(side="right", padx=10)
 
         # 起點
         row1 = tk.Frame(trim_lf)
         row1.pack(fill="x", pady=2)
-        tk.Label(row1, text="起點：", font=("Arial", 10), width=6).pack(side="left")
-        tk.Entry(row1, textvariable=self.start_time_str, width=12, font=("Arial", 10)).pack(side="left", padx=5)
-        tk.Button(row1, text="📍 標記目前位置", command=self._mark_start, font=("Arial", 9), bg="#1976D2", fg="white").pack(side="left")
+        tk.Label(row1, text="起點：", font=("Microsoft JhengHei", 10), width=6).pack(side="left")
+        tk.Entry(row1, textvariable=self.start_time_str, width=12, font=("Microsoft JhengHei", 10)).pack(side="left", padx=5)
+        tk.Button(row1, text="📍 標記目前位置", command=self._mark_start, font=("Microsoft JhengHei", 9), bg="#1976D2", fg="white").pack(side="left")
 
         # 終點
         row2 = tk.Frame(trim_lf)
         row2.pack(fill="x", pady=2)
-        tk.Label(row2, text="終點：", font=("Arial", 10), width=6).pack(side="left")
-        tk.Entry(row2, textvariable=self.end_time_str, width=12, font=("Arial", 10)).pack(side="left", padx=5)
-        tk.Button(row2, text="📍 標記目前位置", command=self._mark_end, font=("Arial", 9), bg="#E64A19", fg="white").pack(side="left")
+        tk.Label(row2, text="終點：", font=("Microsoft JhengHei", 10), width=6).pack(side="left")
+        tk.Entry(row2, textvariable=self.end_time_str, width=12, font=("Microsoft JhengHei", 10)).pack(side="left", padx=5)
+        tk.Button(row2, text="📍 標記目前位置", command=self._mark_end, font=("Microsoft JhengHei", 9), bg="#E64A19", fg="white").pack(side="left")
         
         # 儲存資料夾 Row
         self.out_folder_row = tk.Frame(right_frame)
         self.out_folder_row.pack(fill="x", pady=5)
-        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Arial", 10, "bold"), width=12, anchor="w").pack(side="left")
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 10, "bold"), width=12, anchor="w").pack(side="left")
         self.out_folder_var = tk.StringVar()
-        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Arial", 10), state="readonly")
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Microsoft JhengHei", 10), state="readonly")
         self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Arial", 9)).pack(side="left")
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left")
 
         # 輸出設定
         out_row = tk.Frame(right_frame)
         out_row.pack(fill="x", pady=5)
-        tk.Label(out_row, text="儲存檔名：", font=("Arial", 10)).pack(side="left")
-        self.out_entry = tk.Entry(out_row, font=("Arial", 10))
+        tk.Label(out_row, text="儲存檔名：", font=("Microsoft JhengHei", 10)).pack(side="left")
+        self.out_entry = tk.Entry(out_row, font=("Microsoft JhengHei", 10))
         self.out_entry.pack(side="left", fill="x", expand=True, padx=5)
-        self.ext_label = tk.Label(out_row, text=".mp4", font=("Arial", 10))
+        self.ext_label = tk.Label(out_row, text=".mp4", font=("Microsoft JhengHei", 10))
         self.ext_label.pack(side="left")
 
         # 執行按鈕
         self.trim_btn = tk.Button(right_frame, text="🎬 執行影片裁剪 (無損快速模式)", command=self._do_trim,
-                                  font=("Arial", 12, "bold"), bg="#F44336", fg="white", height=2, state="disabled")
+                                  font=("Microsoft JhengHei", 12, "bold"), bg="#F44336", fg="white", height=2, state="disabled")
         self.trim_btn.pack(fill="x", pady=5)
 
         self.extract_btn = tk.Button(right_frame, text="🎵 影音分離 (一鍵提取高品質音軌)", command=self._do_extract_audio,
-                                     font=("Arial", 11, "bold"), bg="#FF9800", fg="white", height=2, state="disabled")
+                                     font=("Microsoft JhengHei", 11, "bold"), bg="#FF9800", fg="white", height=2, state="disabled")
         self.extract_btn.pack(fill="x", pady=2)
         
-        self.trim_status = tk.Label(right_frame, text="", font=("Arial", 9), fg="green")
+        self.trim_status = tk.Label(right_frame, text="", font=("Microsoft JhengHei", 9), fg="green")
         self.trim_status.pack()
 
         self._refresh_list()
@@ -2978,7 +2978,7 @@ class VideoTrimmerTab:
         y = self.parent.winfo_rooty() + (self.parent.winfo_height() - h) // 2
         dialog.geometry(f"+{x}+{y}")
         
-        tk.Label(dialog, text="請選擇要提取的音訊格式：", font=("Arial", 10)).pack(pady=15)
+        tk.Label(dialog, text="請選擇要提取的音訊格式：", font=("Microsoft JhengHei", 10)).pack(pady=15)
         
         btn_frame = tk.Frame(dialog)
         btn_frame.pack(fill="x", padx=10)
@@ -2987,9 +2987,9 @@ class VideoTrimmerTab:
             dialog.destroy()
             self._start_audio_extraction(fmt)
             
-        tk.Button(btn_frame, text="高品質 MP3 (320k)", bg="#4CAF50", fg="white", font=("Arial", 9, "bold"),
+        tk.Button(btn_frame, text="高品質 MP3 (320k)", bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 9, "bold"),
                    command=lambda: select_format("mp3")).pack(side="left", expand=True, fill="x", padx=5)
-        tk.Button(btn_frame, text="無損 WAV 音軌", bg="#2196F3", fg="white", font=("Arial", 9, "bold"),
+        tk.Button(btn_frame, text="無損 WAV 音軌", bg="#2196F3", fg="white", font=("Microsoft JhengHei", 9, "bold"),
                    command=lambda: select_format("wav")).pack(side="left", expand=True, fill="x", padx=5)
 
     def _start_audio_extraction(self, fmt):
@@ -3049,45 +3049,45 @@ class VideoConverterTab:
         left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
         left_frame.pack_propagate(False)
 
-        tk.Label(left_frame, text="待轉檔影音列表", font=("Arial", 11, "bold")).pack(anchor="w")
+        tk.Label(left_frame, text="待轉檔影音列表", font=("Microsoft JhengHei", 11, "bold")).pack(anchor="w")
 
         folder_frame = tk.Frame(left_frame)
         folder_frame.pack(fill="x", pady=3)
-        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Arial", 8))
+        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Microsoft JhengHei", 8))
         self.folder_entry.pack(side="left", fill="x", expand=True)
-        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Arial", 8)).pack(side="left", padx=2)
+        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
 
-        self.file_listbox = tk.Listbox(left_frame, font=("Arial", 9), selectmode="single", activestyle="dotbox")
+        self.file_listbox = tk.Listbox(left_frame, font=("Microsoft JhengHei", 9), selectmode="single", activestyle="dotbox")
         self.file_listbox.pack(fill="both", expand=True, pady=5)
         self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
 
-        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Arial", 9)).pack(fill="x")
+        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Microsoft JhengHei", 9)).pack(fill="x")
 
         # === 右側：控制區 ===
         right_frame = tk.Frame(self.parent)
         right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
 
         # 選取影片資訊
-        self.info_lf = tk.LabelFrame(right_frame, text="🎬 已選取影音檔案", font=("Arial", 10, "bold"), padx=15, pady=10)
+        self.info_lf = tk.LabelFrame(right_frame, text="🎬 已選取影音檔案", font=("Microsoft JhengHei", 10, "bold"), padx=15, pady=10)
         self.info_lf.pack(fill="x", pady=(0, 10))
-        self.info_label = tk.Label(self.info_lf, text="請先從左側選擇要轉換的影片或音訊檔案", font=("Arial", 10), fg="gray", justify="left", anchor="w", wraplength=500)
+        self.info_label = tk.Label(self.info_lf, text="請先從左側選擇要轉換的影片或音訊檔案", font=("Microsoft JhengHei", 10), fg="gray", justify="left", anchor="w", wraplength=500)
         self.info_label.pack(fill="x")
         
         # DVD VOB 合併勾選框 (預設隱藏，檢測到連續 VOB 時才 pack)
         self.merge_vobs_var = tk.BooleanVar(value=False)
         self.merge_vobs_chk = tk.Checkbutton(self.info_lf, text="偵測到連續的 DVD VOB 檔案，是否一鍵無縫合併轉檔？", 
-                                             variable=self.merge_vobs_var, font=("Arial", 9, "bold"), fg="#FF5722",
+                                             variable=self.merge_vobs_var, font=("Microsoft JhengHei", 9, "bold"), fg="#FF5722",
                                              anchor="w", justify="left", wraplength=480)
 
         # 轉檔參數設定
-        params_lf = tk.LabelFrame(right_frame, text="⚙️ 轉檔參數與畫質壓縮設定", font=("Arial", 10, "bold"), padx=15, pady=15)
+        params_lf = tk.LabelFrame(right_frame, text="⚙️ 轉檔參數與畫質壓縮設定", font=("Microsoft JhengHei", 10, "bold"), padx=15, pady=15)
         params_lf.pack(fill="x", pady=5)
 
         # 目標格式
         row1 = tk.Frame(params_lf)
         row1.pack(fill="x", pady=5)
-        tk.Label(row1, text="目標輸出格式：", font=("Arial", 10, "bold"), width=14, anchor="w").pack(side="left")
-        self.format_combo = ttk.Combobox(row1, values=["MP4 (相容性最高)", "MKV (多軌道支援)", "MP3 (高品質音軌)", "WAV (無損音軌)"], state="readonly", font=("Arial", 9))
+        tk.Label(row1, text="目標輸出格式：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w").pack(side="left")
+        self.format_combo = ttk.Combobox(row1, values=["MP4 (相容性最高)", "MKV (多軌道支援)", "MP3 (高品質音軌)", "WAV (無損音軌)"], state="readonly", font=("Microsoft JhengHei", 9))
         self.format_combo.set("MP4 (相容性最高)")
         self.format_combo.pack(side="left", fill="x", expand=True)
         self.format_combo.bind("<<ComboboxSelected>>", self._on_format_combo_change)
@@ -3095,27 +3095,27 @@ class VideoConverterTab:
         # 儲存位置設定 Row
         self.out_folder_row = tk.Frame(params_lf)
         self.out_folder_row.pack(fill="x", pady=5)
-        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Arial", 10, "bold"), width=14, anchor="w").pack(side="left")
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w").pack(side="left")
         self.out_folder_var = tk.StringVar()
-        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Arial", 10), state="readonly")
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Microsoft JhengHei", 10), state="readonly")
         self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Arial", 9)).pack(side="left")
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left")
 
         # 解析度降低
         self.row2 = tk.Frame(params_lf)
         self.row2.pack(fill="x", pady=5)
-        self.scale_label = tk.Label(self.row2, text="畫質壓縮/解析度：", font=("Arial", 10, "bold"), width=14, anchor="w")
+        self.scale_label = tk.Label(self.row2, text="畫質壓縮/解析度：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w")
         self.scale_label.pack(side="left")
-        self.scale_combo = ttk.Combobox(self.row2, values=["保持原解析度", "1080p (1920x1080)", "720p (1280x720) [推薦，體積減60%]", "480p (854x480) [快速壓縮]"], state="readonly", font=("Arial", 9))
+        self.scale_combo = ttk.Combobox(self.row2, values=["保持原解析度", "1080p (1920x1080)", "720p (1280x720) [推薦，體積減60%]", "480p (854x480) [快速壓縮]"], state="readonly", font=("Microsoft JhengHei", 9))
         self.scale_combo.set("保持原解析度")
         self.scale_combo.pack(side="left", fill="x", expand=True)
 
         # 轉檔速度 (CPU Preset)
         self.row3 = tk.Frame(params_lf)
         self.row3.pack(fill="x", pady=5)
-        self.speed_label = tk.Label(self.row3, text="轉檔編碼速度：", font=("Arial", 10, "bold"), width=14, anchor="w")
+        self.speed_label = tk.Label(self.row3, text="轉檔編碼速度：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w")
         self.speed_label.pack(side="left")
-        self.speed_combo = ttk.Combobox(self.row3, values=["極速模式 (Veryfast) [速度極快，體積稍大]", "預設速度 (Medium)", "高品質模式 (Slow) [壓縮率最高，較慢]"], state="readonly", font=("Arial", 9))
+        self.speed_combo = ttk.Combobox(self.row3, values=["極速模式 (Veryfast) [速度極快，體積稍大]", "預設速度 (Medium)", "高品質模式 (Slow) [壓縮率最高，較慢]"], state="readonly", font=("Microsoft JhengHei", 9))
         self.speed_combo.set("預設速度 (Medium)")
         self.speed_combo.pack(side="left", fill="x", expand=True)
 
@@ -3124,36 +3124,36 @@ class VideoConverterTab:
         self.sub_row.pack(fill="x", pady=5)
         
         self.merge_sub_var = tk.BooleanVar(value=False)
-        self.sub_chk = tk.Checkbutton(self.sub_row, text="🎬 合併外掛字幕 (.srt)：", variable=self.merge_sub_var, font=("Arial", 10, "bold"), command=self._on_sub_chk_change)
+        self.sub_chk = tk.Checkbutton(self.sub_row, text="🎬 合併外掛字幕 (.srt)：", variable=self.merge_sub_var, font=("Microsoft JhengHei", 10, "bold"), command=self._on_sub_chk_change)
         self.sub_chk.pack(side="left")
         
         self.sub_path_var = tk.StringVar()
-        self.sub_entry = tk.Entry(self.sub_row, textvariable=self.sub_path_var, state="readonly", font=("Arial", 9), width=25)
+        self.sub_entry = tk.Entry(self.sub_row, textvariable=self.sub_path_var, state="readonly", font=("Microsoft JhengHei", 9), width=25)
         self.sub_entry.pack(side="left", fill="x", expand=True, padx=5)
         
-        self.sub_btn = tk.Button(self.sub_row, text="選擇 SRT", command=self._browse_srt, font=("Arial", 8), state="disabled")
+        self.sub_btn = tk.Button(self.sub_row, text="選擇 SRT", command=self._browse_srt, font=("Microsoft JhengHei", 8), state="disabled")
         self.sub_btn.pack(side="left", padx=2)
 
         # 轉檔說明提示
-        hint_lbl = tk.Label(params_lf, text="💡 提示：降低解析度（如將 1080p 轉為 720p）能大幅縮小影片檔案體積，非常適合在手機儲存與分享傳送。", font=("Arial", 9), fg="#666", justify="left", wraplength=500)
+        hint_lbl = tk.Label(params_lf, text="💡 提示：降低解析度（如將 1080p 轉為 720p）能大幅縮小影片檔案體積，非常適合在手機儲存與分享傳送。", font=("Microsoft JhengHei", 9), fg="#666", justify="left", wraplength=500)
         hint_lbl.pack(fill="x", pady=(10, 0))
 
         # 執行轉檔大按鈕
-        self.convert_btn = tk.Button(right_frame, text="🚀 開始影音轉檔與畫質壓縮", command=self._do_convert, font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", height=2, state="disabled")
+        self.convert_btn = tk.Button(right_frame, text="🚀 開始影音轉檔與畫質壓縮", command=self._do_convert, font=("Microsoft JhengHei", 12, "bold"), bg="#4CAF50", fg="white", height=2, state="disabled")
         self.convert_btn.pack(fill="x", pady=15)
 
         # 狀態與進度控制區
         self.progress_frame = tk.Frame(right_frame)
         self.progress_frame.pack(fill="x", pady=5)
 
-        self.status_label = tk.Label(self.progress_frame, text="", font=("Arial", 10, "bold"), fg="blue")
+        self.status_label = tk.Label(self.progress_frame, text="", font=("Microsoft JhengHei", 10, "bold"), fg="blue")
         self.status_label.pack(pady=2)
 
         self.progress_bar = ttk.Progressbar(self.progress_frame, orient="horizontal", mode="determinate")
         self.progress_bar.pack(fill="x", pady=5)
         self.progress_bar.pack_forget()
 
-        self.progress_label = tk.Label(self.progress_frame, text="", font=("Arial", 9), fg="#555")
+        self.progress_label = tk.Label(self.progress_frame, text="", font=("Microsoft JhengHei", 9), fg="#555")
         self.progress_label.pack(pady=2)
         self.progress_label.pack_forget()
 
@@ -3213,7 +3213,7 @@ class VideoConverterTab:
         size_bytes = os.path.getsize(full_path)
         size_mb = size_bytes / (1024 * 1024)
         
-        self.info_label.config(text=f"📂 檔名：{filename}\n⚖️ 大小：{size_mb:.2f} MB\n📍 路徑：{full_path}", fg="#333", font=("Arial", 9, "bold"))
+        self.info_label.config(text=f"📂 檔名：{filename}\n⚖️ 大小：{size_mb:.2f} MB\n📍 路徑：{full_path}", fg="#333", font=("Microsoft JhengHei", 9, "bold"))
         self.convert_btn.config(state="normal")
 
         # 智慧唯讀性與可寫性探針校驗，決定介面上預設展示的儲存路徑
@@ -3396,9 +3396,11 @@ class VideoConverterTab:
                 self.parent.after(0, lambda: self.progress_bar.pack(fill="x", pady=5))
                 self.parent.after(0, lambda: self.progress_label.pack(pady=2))
             
+            # 針對 DVD VOB 轉成 MKV 的智慧多音軌與多字幕無損保留
+            is_dvd_mkv = "MKV" in fmt_sel and in_path.lower().endswith(".vob")
+            
             # 基本命令
             if vob_list:
-                # 檔名清單，並用 concat 串接，同時指定 cwd=self._folder_path 可完美避開 Windows 絕對路徑冒號與反斜線問題
                 vob_names = [os.path.basename(p) for p in vob_list]
                 concat_str = "concat:" + "|".join(vob_names)
                 cmd = ["ffmpeg", "-y", "-i", concat_str]
@@ -3424,16 +3426,6 @@ class VideoConverterTab:
                 elif "480p" in scale:
                     vf_args.append("scale=-2:480")
                 
-                # 外掛字幕合併
-                if self.merge_sub_var.get() and self.sub_path_var.get():
-                    sub_path = self.sub_path_var.get()
-                    if os.path.exists(sub_path):
-                        escaped_sub = self._escape_ffmpeg_path(sub_path)
-                        vf_args.append(f"subtitles='{escaped_sub}'")
-                
-                if vf_args:
-                    cmd += ["-vf", ",".join(vf_args)]
-                    
                 # 設定轉檔速度 (Preset)
                 speed = self.speed_combo.get()
                 preset_val = "medium"
@@ -3442,8 +3434,24 @@ class VideoConverterTab:
                 elif "高品質" in speed:
                     preset_val = "slow"
                     
-                # h264 編碼器與 aac 音訊編碼
-                cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "aac", "-b:a", "192k", out_path]
+                if is_dvd_mkv:
+                    # 智慧 Remux 保留多軌道：映射所有軌道 (-map 0)，多音軌與多字幕直接無損複製 (-c:a copy, -c:s copy)
+                    cmd += ["-map", "0"]
+                    if vf_args:
+                        cmd += ["-vf", ",".join(vf_args)]
+                    cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "copy", "-c:s", "copy", out_path]
+                else:
+                    # 一般轉檔單軌處理
+                    if self.merge_sub_var.get() and self.sub_path_var.get():
+                        sub_path = self.sub_path_var.get()
+                        if os.path.exists(sub_path):
+                            escaped_sub = self._escape_ffmpeg_path(sub_path)
+                            vf_args.append(f"subtitles='{escaped_sub}'")
+                    
+                    if vf_args:
+                        cmd += ["-vf", ",".join(vf_args)]
+                        
+                    cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "aac", "-b:a", "192k", out_path]
                 
             process = subprocess.Popen(
                 cmd,
@@ -3598,8 +3606,8 @@ class MP3MergerTab:
         # 頂部：資料夾選擇 (與裁剪工具一致)
         folder_frame = tk.Frame(self.parent)
         folder_frame.pack(fill="x", padx=10, pady=(10, 0))
-        tk.Label(folder_frame, text="📁 歌曲資料夾：", font=("Arial", 10)).pack(side="left")
-        self.path_entry = tk.Entry(folder_frame, textvariable=self.download_path_var, font=("Arial", 10))
+        tk.Label(folder_frame, text="📁 歌曲資料夾：", font=("Microsoft JhengHei", 10)).pack(side="left")
+        self.path_entry = tk.Entry(folder_frame, textvariable=self.download_path_var, font=("Microsoft JhengHei", 10))
         self.path_entry.pack(side="left", fill="x", expand=True, padx=5)
         tk.Button(folder_frame, text="選擇", command=self._browse_folder).pack(side="left", padx=2)
         tk.Button(folder_frame, text="開啟", command=self._open_folder).pack(side="left", padx=2)
@@ -3612,15 +3620,15 @@ class MP3MergerTab:
         left_frame = tk.Frame(main_body, width=220)
         left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
         left_frame.pack_propagate(False)
-        tk.Label(left_frame, text="1. 來源 MP3 (可多選)", font=("Arial", 10, "bold")).pack(anchor="w")
-        tk.Label(left_frame, text="💡 按住 Shift 點選前後可連續選取", font=("Arial", 8), fg="#666").pack(anchor="w")
+        tk.Label(left_frame, text="1. 來源 MP3 (可多選)", font=("Microsoft JhengHei", 10, "bold")).pack(anchor="w")
+        tk.Label(left_frame, text="💡 按住 Shift 點選前後可連續選取", font=("Microsoft JhengHei", 8), fg="#666").pack(anchor="w")
         
         # 先 pack 下方按鈕，確保不會被清單擠掉
-        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_src_list, font=("Arial", 9)).pack(side="bottom", fill="x", pady=2)
-        tk.Button(left_frame, text="➕ 加入合併清單", command=self._add_to_merge, bg="#4CAF50", fg="white", font=("Arial", 10, "bold")).pack(side="bottom", fill="x")
+        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_src_list, font=("Microsoft JhengHei", 9)).pack(side="bottom", fill="x", pady=2)
+        tk.Button(left_frame, text="➕ 加入合併清單", command=self._add_to_merge, bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 10, "bold")).pack(side="bottom", fill="x")
         
         # 支援自訂選取行為：單擊切換 + Shift 範圍選取
-        self.src_listbox = tk.Listbox(left_frame, font=("Arial", 9), selectmode="extended")
+        self.src_listbox = tk.Listbox(left_frame, font=("Microsoft JhengHei", 9), selectmode="extended")
         self.src_listbox.pack(fill="both", expand=True, pady=5)
         self.src_listbox.bind("<Button-1>", self._on_listbox_click)
         self._last_idx = None
@@ -3629,7 +3637,7 @@ class MP3MergerTab:
         mid_frame = tk.Frame(main_body, width=260)
         mid_frame.pack(side="left", fill="y", padx=5, pady=10)
         mid_frame.pack_propagate(False)
-        tk.Label(mid_frame, text="2. 合併清單", font=("Arial", 10, "bold")).pack(anchor="w")
+        tk.Label(mid_frame, text="2. 合併清單", font=("Microsoft JhengHei", 10, "bold")).pack(anchor="w")
         
         # 先 pack 下方按鈕
         tk.Button(mid_frame, text="🧹 清除全部歌曲", command=self._clear_all, bg="#757575", fg="white").pack(side="bottom", fill="x", pady=2)
@@ -3640,13 +3648,13 @@ class MP3MergerTab:
         tk.Button(btn_grid, text="🔼 上移", command=lambda: self._move_item(-1), width=10).pack(side="left", padx=2, expand=True, fill="x")
         tk.Button(btn_grid, text="🔽 下移", command=lambda: self._move_item(1), width=10).pack(side="left", padx=2, expand=True, fill="x")
 
-        self.merge_listbox = tk.Listbox(mid_frame, font=("Arial", 9))
+        self.merge_listbox = tk.Listbox(mid_frame, font=("Microsoft JhengHei", 9))
         self.merge_listbox.pack(fill="both", expand=True, pady=5)
 
         # 3. 右側：預覽與執行
         right_frame = tk.Frame(self.parent)
         right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
-        tk.Label(right_frame, text="3. 預覽與輸出", font=("Arial", 10, "bold")).pack(anchor="w")
+        tk.Label(right_frame, text="3. 預覽與輸出", font=("Microsoft JhengHei", 10, "bold")).pack(anchor="w")
 
         # 播放控制
         ctrl_frame = tk.Frame(right_frame)
@@ -3659,7 +3667,7 @@ class MP3MergerTab:
         tk.Button(ctrl_frame, text="+1s ▶", command=lambda: self._seek_relative(1000)).pack(side="left", padx=1)
         tk.Button(ctrl_frame, text="+5s ⏭", command=lambda: self._seek_relative(5000)).pack(side="left", padx=1)
 
-        self.time_label = tk.Label(right_frame, text="00:00 / 00:00", font=("Arial", 10))
+        self.time_label = tk.Label(right_frame, text="00:00 / 00:00", font=("Microsoft JhengHei", 10))
         self.time_label.pack(pady=2)
 
         # 虛擬進度條 (Canvas)
@@ -3674,11 +3682,11 @@ class MP3MergerTab:
         # 儲存資料夾 Row (預設為 download_path_var 的值，並可自主選擇)
         self.out_folder_row = tk.Frame(right_frame)
         self.out_folder_row.pack(fill="x", pady=5)
-        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Arial", 10, "bold"), width=12, anchor="w").pack(side="left")
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 10, "bold"), width=12, anchor="w").pack(side="left")
         self.out_folder_var = tk.StringVar(value=self.download_path_var.get())
-        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Arial", 10), state="readonly")
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Microsoft JhengHei", 10), state="readonly")
         self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Arial", 9)).pack(side="left")
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left")
 
         tk.Label(right_frame, text="合併後檔名：").pack(anchor="w", pady=(10, 0))
         self.out_entry = tk.Entry(right_frame)
@@ -3689,13 +3697,13 @@ class MP3MergerTab:
         fade_frame = tk.Frame(right_frame)
         fade_frame.pack(fill="x", pady=5)
         tk.Checkbutton(fade_frame, text="✨ 啟用融合效果 (Crossfade)", variable=self.fade_var, 
-                       font=("Arial", 10, "bold"), fg="#1976D2").pack(side="left")
+                       font=("Microsoft JhengHei", 10, "bold"), fg="#1976D2").pack(side="left")
         tk.Label(fade_frame, text="  融合秒數：").pack(side="left")
         tk.Spinbox(fade_frame, from_=1, to=5, textvariable=self.fade_sec, width=5).pack(side="left")
-        tk.Label(fade_frame, text="(註：融合需重新轉檔，速度較慢)", font=("Arial", 8), fg="gray").pack(side="left", padx=5)
+        tk.Label(fade_frame, text="(註：融合需重新轉檔，速度較慢)", font=("Microsoft JhengHei", 8), fg="gray").pack(side="left", padx=5)
 
         self.merge_btn = tk.Button(right_frame, text="🚀 開始合併所有歌曲", command=self._do_merge, 
-                                   bg="#4CAF50", fg="white", font=("Arial", 12, "bold"), height=2)
+                                   bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 12, "bold"), height=2)
         self.merge_btn.pack(fill="x", pady=10)
         
         self.status_label = tk.Label(right_frame, text="", fg="blue")
@@ -3890,12 +3898,12 @@ class MP3MergerTab:
                     c.create_rectangle(s, 0, s + step, h // 2, fill=stripe_color, outline="")
                 # 標示融合區
                 mid = (fade_x0 + fade_x1) // 2
-                c.create_text(mid, h // 2, text="↔", font=("Arial", 8), fill="white", anchor="center")
+                c.create_text(mid, h // 2, text="↔", font=("Microsoft JhengHei", 8), fill="white", anchor="center")
 
             # 標示起始時間
             if x1 - x0 > 45:
                 t_str = self._fmt_ms(int(acc_virtual))
-                c.create_text(x0 + 3, h - 4, text=t_str, anchor="sw", font=("Arial", 8), fill="#222")
+                c.create_text(x0 + 3, h - 4, text=t_str, anchor="sw", font=("Microsoft JhengHei", 8), fill="#222")
 
             acc_virtual += eff_dur
 

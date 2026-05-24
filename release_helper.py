@@ -76,16 +76,64 @@ def main():
     suggested_version = get_next_version(current_version)
     print(f"目前版本為: {current_version}")
     
-    new_version = input(f"請輸入新的版本號 [直接按 Enter 預設為 {suggested_version}]: ").strip()
+    new_version = input(f"請輸入本次版本號 [直接按 Enter 預設為 {suggested_version}]: ").strip()
     if not new_version:
         new_version = suggested_version
         
-    print(f"\n[OK] 將發布新版本: {new_version}")
+    print(f"\n[OK] 本次設定版本: {new_version}")
     
     update_notes = input("\n請簡單輸入這次更新的內容 (例如: 修復閃退問題): ").strip()
     if not update_notes:
         update_notes = "一般更新與修復"
         
+    print("\n==============================================")
+    print("      請選擇本次發布模式 (Release Mode)")
+    print("==============================================")
+    print("  [1] 🚀 發布「正式穩定版」 (所有使用者會下載到此最新版)")
+    print("  [2] 🧪 發布「測試預覽版」 (Pre-release，GitHub 標記為測試版，不影響穩定版)")
+    print("  [3] 💾 僅「上傳備份程式碼」 (僅同步程式碼至 GitHub，不打包 EXE、不發布 Release)")
+    print("==============================================")
+    
+    mode_choice = input("請輸入選項 [預設為 1]: ").strip()
+    if not mode_choice:
+        mode_choice = "1"
+
+    # ==========================================
+    # 模式 3：僅備份程式碼
+    # ==========================================
+    if mode_choice == "3":
+        print(f"\n[1/2] 正在更新 main.py 與 使用說明.md 內的版本號為 {new_version}...")
+        try:
+            new_content = re.sub(r'APP_VERSION\s*=\s*"[^"]+"', f'APP_VERSION = "{new_version}"', content)
+            with open("main.py", "w", encoding="utf-8") as f:
+                f.write(new_content)
+            if os.path.exists("使用說明.md"):
+                with open("使用說明.md", "r", encoding="utf-8") as f:
+                    md_content = f.read()
+                md_content = re.sub(r'使用說明 \(v[^)]+\)', f'使用說明 (v{new_version})', md_content)
+                md_content = re.sub(r'Version [0-9.]+', f'Version {new_version}', md_content)
+                with open("使用說明.md", "w", encoding="utf-8") as f:
+                    f.write(md_content)
+                print("      [OK] 版本號已更新。")
+        except Exception as e:
+            print(f"更新版本號失敗: {e}")
+            input("請按 Enter 鍵結束...")
+            return
+
+        print("\n[2/2] 正在將最新程式碼備份到 GitHub...")
+        subprocess.run(["git", "add", "."])
+        subprocess.run(["git", "commit", "-m", f"備份程式碼 v{new_version}: {update_notes}"])
+        subprocess.run(["git", "push"])
+        print("\n==============================================")
+        print("   [OK] 備份完成！程式碼已成功推送上傳 GitHub！")
+        print("   (未進行 EXE 打包與建立 Release 發布版)")
+        print("==============================================")
+        input("\n請按 Enter 鍵關閉視窗...")
+        return
+
+    # ==========================================
+    # 模式 1 & 2：打包並發布 Release (穩定/預覽版)
+    # ==========================================
     print("\n[1/6] 正在檢查 GitHub 授權狀態...")
     has_gh = check_gh_login()
     if not has_gh:
@@ -95,42 +143,36 @@ def main():
         
     print(f"\n[2/6] 正在更新 main.py 與 使用說明.md 內的版本號為 {new_version}...")
     try:
-        # 更新 main.py
         new_content = re.sub(r'APP_VERSION\s*=\s*"[^"]+"', f'APP_VERSION = "{new_version}"', content)
         with open("main.py", "w", encoding="utf-8") as f:
             f.write(new_content)
             
-        # 同步更新 使用說明.md
         if os.path.exists("使用說明.md"):
             with open("使用說明.md", "r", encoding="utf-8") as f:
                 md_content = f.read()
-            # 替換第一行的標題版本號
             md_content = re.sub(r'使用說明 \(v[^)]+\)', f'使用說明 (v{new_version})', md_content)
-            # 替換結尾的版本號
             md_content = re.sub(r'Version [0-9.]+', f'Version {new_version}', md_content)
-            
             with open("使用說明.md", "w", encoding="utf-8") as f:
                 f.write(md_content)
             print("      [OK] 使用說明.md 版本號已同步。")
-            
     except Exception as e:
         print(f"更新版本號失敗: {e}")
         input("請按 Enter 鍵結束...")
         return
 
     print("\n[3/6] 正在打包成執行檔 (這需要 1~2 分鐘，請耐心等候)...")
-    subprocess.run(["py", "-3", "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed", "--icon=icon.ico", "--add-data", "icon.ico;.", "--name", "CYT_YTDL", "main.py"])
+    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed", "--icon=icon.ico", "--add-data", "icon.ico;.", "--name", "CYT_YTDL", "main.py"])
     
     exe_path = os.path.join("dist", "CYT_YTDL.exe")
     zip_path = os.path.join("dist", "CYT_YTDL.zip")
-    txt_path = os.path.join("dist", "程式說明.txt")
+    txt_path = os.path.join("dist", "使用說明.txt")
     
     if not os.path.exists(exe_path):
         print(f"\n[Error] 打包失敗，找不到 {exe_path}")
         input("請按 Enter 鍵結束...")
         return
 
-    print("\n[3.3/6] 正在同步產生文字版：程式說明.txt...")
+    print("\n[3.3/6] 正在同步產生文字版：使用說明.txt...")
     convert_md_to_txt("使用說明.md", txt_path)
 
     print("\n[3.5/6] 正在將執行檔與程式說明壓縮為 ZIP...")
@@ -140,7 +182,7 @@ def main():
             zipf.write(exe_path, os.path.basename(exe_path))
             if os.path.exists(txt_path):
                 zipf.write(txt_path, os.path.basename(txt_path))
-        print(f"      [OK] 壓縮完成: {zip_path} (含程式說明.txt)")
+        print(f"      [OK] 壓縮完成: {zip_path} (含使用說明.txt)")
     except Exception as e:
         print(f"      [Error] 壓縮失敗: {e}")
         input("請按 Enter 鍵結束...")
@@ -148,19 +190,29 @@ def main():
 
     print("\n[4/6] 正在將最新程式碼備份到 GitHub...")
     subprocess.run(["git", "add", "."])
-    subprocess.run(["git", "commit", "-m", f"發布新版本 v{new_version}: {update_notes}"])
+    # 根據模式設定 Commit Message
+    commit_msg = f"發布測試預覽版 v{new_version}: {update_notes}" if mode_choice == "2" else f"發布正式版本 v{new_version}: {update_notes}"
+    subprocess.run(["git", "commit", "-m", commit_msg])
     subprocess.run(["git", "push"])
     
     print("\n[5/6] 正在建立 Release 並同時上傳所有檔案...")
-    print("      (包含 EXE、ZIP 與 程式說明.txt，上傳可能需要 1~2 分鐘)")
-    result = subprocess.run([
+    print("      (包含 EXE、ZIP 與 使用說明.txt，上傳可能需要 1~2 分鐘)")
+    
+    cmd_release = [
         "gh", "release", "create", f"v{new_version}", 
         exe_path, 
         zip_path,
         txt_path,
         "--title", f"v{new_version}", 
         "--notes", update_notes
-    ], capture_output=True, text=True, encoding='utf-8', errors='ignore')
+    ]
+    
+    # 模式 2：發布測試版 (Pre-release)
+    if mode_choice == "2":
+        cmd_release.append("--prerelease")
+        print("      [INFO] 本次將建立為 Pre-release (測試預覽版)")
+        
+    result = subprocess.run(cmd_release, capture_output=True, text=True, encoding='utf-8', errors='ignore')
     
     if result.returncode == 0:
         print("\n[Success] 發布成功！EXE 與 ZIP 檔案皆已自動上傳完畢！")

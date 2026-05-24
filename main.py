@@ -17,8 +17,15 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.2.8"
+APP_VERSION = "2.2.9"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
+
+# ===========================================================================
+# 使用者回饋系統的 Google Apps Script 後台網址
+# 若未來有更換新的後台 URL，請直接在此處進行替換即可！
+# ===========================================================================
+FEEDBACK_API_URL = "https://script.google.com/macros/s/AKfycbztgKmePvfpuWwvNgKMJK_uRyUvanOpG0TkHpCwTGyDHn1k2SyGDNNnRJFEYmFmmOLA/exec"
+
 
 try:
     from PIL import Image, ImageTk
@@ -212,6 +219,21 @@ class YouTubeDownloaderGUI:
             pass
             
         tk.Label(header_frame, text=f"CYT_網路影音下載器 v{APP_VERSION}", font=("Arial", 18, "bold"), bg="white").pack(side="left")
+
+        # 右側使用者回饋按鈕 (Flat UI, 暖橘色)
+        self.feedback_btn = tk.Button(
+            header_frame, 
+            text="💡 使用者回饋", 
+            command=self.open_feedback_dialog, 
+            font=("Arial", 10, "bold"), 
+            bg="#FF9800", 
+            fg="white", 
+            relief="flat", 
+            padx=10, 
+            pady=3,
+            cursor="hand2"
+        )
+        self.feedback_btn.pack(side="right", padx=20)
 
         # === 標簿頁 (Notebook) ===
         self.notebook = ttk.Notebook(self.root)
@@ -1552,6 +1574,130 @@ class YouTubeDownloaderGUI:
                 "章節分割完成",
                 f"成功將影片分割為 {total} 個章節檔案！\n\n輸出資料夾：\n{out_dir}\n\n原始完整檔案已保留在：\n{save_dir}"
             ))
+
+    def open_feedback_dialog(self):
+        # 建立表單 Toplevel 視窗
+        dialog = tk.Toplevel(self.root)
+        dialog.title("💡 使用者回饋表單")
+        dialog.geometry("480x430")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # 視窗置中
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # 頂部裝飾條與文字
+        top_bar = tk.Frame(dialog, bg="#FF9800", height=4)
+        top_bar.pack(fill="x")
+        
+        tk.Label(dialog, text="💡 用戶問題回報與功能許願", font=("Arial", 14, "bold"), fg="#333", pady=10).pack()
+        
+        # 表單容器
+        form_frame = tk.Frame(dialog, padx=20, pady=10)
+        form_frame.pack(fill="both", expand=True)
+        
+        # 姓名
+        row1 = tk.Frame(form_frame)
+        row1.pack(fill="x", pady=5)
+        tk.Label(row1, text="您的稱呼：*", font=("Arial", 10, "bold"), width=10, anchor="w").pack(side="left")
+        name_entry = tk.Entry(row1, font=("Arial", 10))
+        name_entry.pack(side="left", fill="x", expand=True)
+        
+        # E-mail
+        row2 = tk.Frame(form_frame)
+        row2.pack(fill="x", pady=5)
+        tk.Label(row2, text="聯絡信箱：", font=("Arial", 10), width=10, anchor="w").pack(side="left")
+        email_entry = tk.Entry(row2, font=("Arial", 10))
+        email_entry.pack(side="left", fill="x", expand=True)
+        
+        # 類別
+        row3 = tk.Frame(form_frame)
+        row3.pack(fill="x", pady=5)
+        tk.Label(row3, text="回饋類別：", font=("Arial", 10), width=10, anchor="w").pack(side="left")
+        type_combo = ttk.Combobox(row3, values=["問題回報 🐛", "功能建議 💡", "其他 ✉️"], state="readonly", font=("Arial", 9))
+        type_combo.set("問題回報 🐛")
+        type_combo.pack(side="left", fill="x", expand=True)
+        
+        # 內容
+        row4 = tk.Frame(form_frame)
+        row4.pack(fill="both", expand=True, pady=5)
+        tk.Label(row4, text="詳細說明：*", font=("Arial", 10, "bold"), width=10, anchor="nw").pack(side="left", pady=(3,0))
+        content_text = tk.Text(row4, font=("Arial", 10), height=8, wrap="word")
+        content_text.pack(side="left", fill="both", expand=True)
+        
+        # 按鈕區
+        btn_frame = tk.Frame(dialog, pady=15)
+        btn_frame.pack(side="bottom", fill="x")
+        
+        def on_submit():
+            name = name_entry.get().strip()
+            email = email_entry.get().strip()
+            feedback_type = type_combo.get()
+            content = content_text.get("1.0", tk.END).strip()
+            
+            if not name:
+                messagebox.showerror("錯誤", "「您的稱呼」為必填欄位！", parent=dialog)
+                return
+            if not content:
+                messagebox.showerror("錯誤", "「詳細說明」為必填欄位！", parent=dialog)
+                return
+            if email and not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+                messagebox.showerror("錯誤", "請輸入格式正確的聯絡信箱！", parent=dialog)
+                return
+            
+            confirm_msg = f"確認要送出回饋嗎？\n\n【您的稱呼】：{name}\n【聯絡信箱】：{email or '未提供'}\n【回饋類別】：{feedback_type}\n\n說明內容：\n{content}"
+            if messagebox.askyesno("送出確認", confirm_msg, parent=dialog):
+                self.send_feedback(name, email, feedback_type, content, dialog)
+                
+        tk.Button(btn_frame, text="🚀 送出回饋", bg="#4CAF50", fg="white", font=("Arial", 11, "bold"), width=15, command=on_submit).pack(side="right", padx=30)
+        tk.Button(btn_frame, text="取消", font=("Arial", 11), width=10, command=dialog.destroy).pack(side="left", padx=30)
+
+    def send_feedback(self, name, email, feedback_type, content, dialog):
+        # 顯示發送中提示並鎖定按鈕
+        dialog.title("正在發送...")
+        self.update_progress_ui(0, "正在發送回饋資訊給開發者...", "blue")
+        
+        data = {
+            "appName": "CYT_網路影音下載器",
+            "userName": name,
+            "email": email or "未提供",
+            "type": feedback_type,
+            "content": content,
+            "os": "Windows"
+        }
+        
+        def _send_thread():
+            try:
+                req_data = json.dumps(data).encode("utf-8")
+                req = urllib.request.Request(
+                    FEEDBACK_API_URL, 
+                    data=req_data, 
+                    headers={'Content-Type': 'application/json'},
+                    method="POST"
+                )
+                
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    res_body = response.read().decode("utf-8")
+                    res_json = json.loads(res_body)
+                    
+                    if res_json.get("status") == "success":
+                        self.root.after(0, lambda: self.update_progress_ui(0, "🎉 感謝您的寶貴回饋！送出成功！", "green"))
+                        self.root.after(0, lambda: messagebox.showinfo("送出成功", "🎉 您的回饋已成功送達開發者！\n感謝您對 CYT_網路影音下載器的支持與建議！", parent=self.root))
+                        self.root.after(0, dialog.destroy)
+                    else:
+                        err_msg = res_json.get("message", "未知錯誤")
+                        self.root.after(0, lambda: self.update_progress_ui(0, f"❌ 送出失敗：{err_msg}", "red"))
+                        self.root.after(0, lambda: messagebox.showerror("送出失敗", f"❌ 後台處理失敗：\n{err_msg}", parent=dialog))
+            except Exception as e:
+                err_msg = str(e)
+                self.root.after(0, lambda: self.update_progress_ui(0, f"❌ 發送失敗：{err_msg}", "red"))
+                self.root.after(0, lambda: messagebox.showerror("連線錯誤", f"❌ 無法連線至回饋後台伺服器！\n請檢查 API 網址是否正確且已公開發布。\n\n詳細錯誤資訊：\n{err_msg}", parent=dialog))
+                
+        threading.Thread(target=_send_thread, daemon=True).start()
 
 class MCIPlayer:
     def __init__(self, alias="cyt_mp3_player"):

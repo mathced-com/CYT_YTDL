@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.3.4"
+APP_VERSION = "2.3.5"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 
@@ -3435,8 +3435,8 @@ class VideoConverterTab:
                     preset_val = "slow"
                     
                 if is_dvd_mkv:
-                    # 智慧 Remux 保留多軌道：映射所有軌道 (-map 0)，多音軌與多字幕直接無損複製 (-c:a copy, -c:s copy)
-                    cmd += ["-map", "0"]
+                    # 智慧 Remux 保留多軌道：僅映射影音與字幕軌 (-map 0:v -map 0:a -map 0:s?)，過濾不相容的資料軌 (如 dvd_nav_packet)
+                    cmd += ["-map", "0:v", "-map", "0:a", "-map", "0:s?"]
                     if vf_args:
                         cmd += ["-vf", ",".join(vf_args)]
                     cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "copy", "-c:s", "copy", out_path]

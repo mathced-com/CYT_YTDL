@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.2.9"
+APP_VERSION = "2.2.10"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 # ===========================================================================
@@ -204,6 +204,8 @@ class YouTubeDownloaderGUI:
             self.video_trimmer._refresh_list()
         elif "合併" in text:
             self.merger._refresh_src_list()
+        elif "轉檔" in text:
+            self.converter._refresh_list()
 
     def create_widgets(self):
         # === 全局標題列 (在 Notebook 之上) ===
@@ -257,6 +259,11 @@ class YouTubeDownloaderGUI:
         tab_video_trim = tk.Frame(self.notebook)
         self.notebook.add(tab_video_trim, text="  🎬 影片裁剪工具  ")
         self.video_trimmer = VideoTrimmerTab(tab_video_trim, self.download_path)
+        
+        # Tab 5: 影音轉檔工具
+        tab_converter = tk.Frame(self.notebook)
+        self.notebook.add(tab_converter, text="  🔄 影音轉檔工具  ")
+        self.converter = VideoConverterTab(tab_converter, self.download_path)
         
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
@@ -1963,8 +1970,8 @@ class MP3TrimmerTab:
             self._refresh_list()
 
     def _open_folder(self):
-        folder = getattr(self, '_folder_path', self.download_path_var.get())
-        if os.path.exists(folder):
+        folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
+        if folder and os.path.exists(folder):
             os.startfile(folder)
         else:
             messagebox.showerror("錯誤", "找不到指定的資料夾路徑。")
@@ -1976,11 +1983,11 @@ class MP3TrimmerTab:
         self.folder_entry.config(state="readonly")
 
     def _refresh_list(self):
-        folder = getattr(self, '_folder_path', self.download_path_var.get())
+        folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
         self._folder_path = folder
         self._update_folder_entry(folder)
         self.file_listbox.delete(0, tk.END)
-        if not os.path.exists(folder):
+        if not folder or not os.path.exists(folder):
             return
         mp3_files = sorted([f for f in os.listdir(folder) if f.lower().endswith('.mp3')])
         for f in mp3_files:
@@ -2489,11 +2496,11 @@ class VideoTrimmerTab:
         self.folder_entry.config(state="readonly")
 
     def _refresh_list(self):
-        folder = getattr(self, '_folder_path', self.download_path_var.get())
+        folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
         self._folder_path = folder
         self._update_folder_entry(folder)
         self.file_listbox.delete(0, tk.END)
-        if not os.path.exists(folder): return
+        if not folder or not os.path.exists(folder): return
         files = sorted([f for f in os.listdir(folder) if f.lower().endswith(('.mp4', '.mkv'))])
         for f in files: self.file_listbox.insert(tk.END, f)
 
@@ -2738,6 +2745,403 @@ class VideoTrimmerTab:
                 return float(p[0])*60 + float(p[1])
             return float(t_str)
         except: return 0.0
+
+
+# ===========================================================================
+# VideoConverterTab：影音轉檔工具的完整 UI 類別
+# ===========================================================================
+class VideoConverterTab:
+    def __init__(self, parent, download_path_var):
+        self.parent = parent
+        self.download_path_var = download_path_var
+        self.current_file = None
+        self._folder_path = ""
+        
+        self.target_format = tk.StringVar(value="MP4")
+        self.scale_choice = tk.StringVar(value="保持原解析度")
+        self.speed_choice = tk.StringVar(value="預設速度 (Medium)")
+        
+        self._build_ui()
+
+    def _build_ui(self):
+        # === 左側：檔案列表區 ===
+        left_frame = tk.Frame(self.parent, width=220)
+        left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
+        left_frame.pack_propagate(False)
+
+        tk.Label(left_frame, text="待轉檔影音列表", font=("Arial", 11, "bold")).pack(anchor="w")
+
+        folder_frame = tk.Frame(left_frame)
+        folder_frame.pack(fill="x", pady=3)
+        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Arial", 8))
+        self.folder_entry.pack(side="left", fill="x", expand=True)
+        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Arial", 8)).pack(side="left", padx=2)
+
+        self.file_listbox = tk.Listbox(left_frame, font=("Arial", 9), selectmode="single", activestyle="dotbox")
+        self.file_listbox.pack(fill="both", expand=True, pady=5)
+        self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
+
+        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Arial", 9)).pack(fill="x")
+
+        # === 右側：控制區 ===
+        right_frame = tk.Frame(self.parent)
+        right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
+
+        # 選取影片資訊
+        self.info_lf = tk.LabelFrame(right_frame, text="🎬 已選取影音檔案", font=("Arial", 10, "bold"), padx=15, pady=10)
+        self.info_lf.pack(fill="x", pady=(0, 10))
+        self.info_label = tk.Label(self.info_lf, text="請先從左側選擇要轉換的影片或音訊檔案", font=("Arial", 10), fg="gray", justify="left", anchor="w", wraplength=500)
+        self.info_label.pack(fill="x")
+
+        # 轉檔參數設定
+        params_lf = tk.LabelFrame(right_frame, text="⚙️ 轉檔參數與畫質壓縮設定", font=("Arial", 10, "bold"), padx=15, pady=15)
+        params_lf.pack(fill="x", pady=5)
+
+        # 目標格式
+        row1 = tk.Frame(params_lf)
+        row1.pack(fill="x", pady=5)
+        tk.Label(row1, text="目標輸出格式：", font=("Arial", 10, "bold"), width=14, anchor="w").pack(side="left")
+        self.format_combo = ttk.Combobox(row1, values=["MP4 (相容性最高)", "MKV (多軌道支援)", "MP3 (高品質音軌)", "WAV (無損音軌)"], state="readonly", font=("Arial", 9))
+        self.format_combo.set("MP4 (相容性最高)")
+        self.format_combo.pack(side="left", fill="x", expand=True)
+        self.format_combo.bind("<<ComboboxSelected>>", self._on_format_combo_change)
+
+        # 解析度降低
+        self.row2 = tk.Frame(params_lf)
+        self.row2.pack(fill="x", pady=5)
+        self.scale_label = tk.Label(self.row2, text="畫質壓縮/解析度：", font=("Arial", 10, "bold"), width=14, anchor="w")
+        self.scale_label.pack(side="left")
+        self.scale_combo = ttk.Combobox(self.row2, values=["保持原解析度", "1080p (1920x1080)", "720p (1280x720) [推薦，體積減60%]", "480p (854x480) [快速壓縮]"], state="readonly", font=("Arial", 9))
+        self.scale_combo.set("保持原解析度")
+        self.scale_combo.pack(side="left", fill="x", expand=True)
+
+        # 轉檔速度 (CPU Preset)
+        self.row3 = tk.Frame(params_lf)
+        self.row3.pack(fill="x", pady=5)
+        self.speed_label = tk.Label(self.row3, text="轉檔編碼速度：", font=("Arial", 10, "bold"), width=14, anchor="w")
+        self.speed_label.pack(side="left")
+        self.speed_combo = ttk.Combobox(self.row3, values=["極速模式 (Veryfast) [速度極快，體積稍大]", "預設速度 (Medium)", "高品質模式 (Slow) [壓縮率最高，較慢]"], state="readonly", font=("Arial", 9))
+        self.speed_combo.set("預設速度 (Medium)")
+        self.speed_combo.pack(side="left", fill="x", expand=True)
+
+        # 外掛字幕設定
+        self.sub_row = tk.Frame(params_lf)
+        self.sub_row.pack(fill="x", pady=5)
+        
+        self.merge_sub_var = tk.BooleanVar(value=False)
+        self.sub_chk = tk.Checkbutton(self.sub_row, text="🎬 合併外掛字幕 (.srt)：", variable=self.merge_sub_var, font=("Arial", 10, "bold"), command=self._on_sub_chk_change)
+        self.sub_chk.pack(side="left")
+        
+        self.sub_path_var = tk.StringVar()
+        self.sub_entry = tk.Entry(self.sub_row, textvariable=self.sub_path_var, state="readonly", font=("Arial", 9), width=25)
+        self.sub_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        self.sub_btn = tk.Button(self.sub_row, text="選擇 SRT", command=self._browse_srt, font=("Arial", 8), state="disabled")
+        self.sub_btn.pack(side="left", padx=2)
+
+        # 轉檔說明提示
+        hint_lbl = tk.Label(params_lf, text="💡 提示：降低解析度（如將 1080p 轉為 720p）能大幅縮小影片檔案體積，非常適合在手機儲存與分享傳送。", font=("Arial", 9), fg="#666", justify="left", wraplength=500)
+        hint_lbl.pack(fill="x", pady=(10, 0))
+
+        # 執行轉檔大按鈕
+        self.convert_btn = tk.Button(right_frame, text="🚀 開始影音轉檔與畫質壓縮", command=self._do_convert, font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", height=2, state="disabled")
+        self.convert_btn.pack(fill="x", pady=15)
+
+        # 狀態與進度控制區
+        self.progress_frame = tk.Frame(right_frame)
+        self.progress_frame.pack(fill="x", pady=5)
+
+        self.status_label = tk.Label(self.progress_frame, text="", font=("Arial", 10, "bold"), fg="blue")
+        self.status_label.pack(pady=2)
+
+        self.progress_bar = ttk.Progressbar(self.progress_frame, orient="horizontal", mode="determinate")
+        self.progress_bar.pack(fill="x", pady=5)
+        self.progress_bar.pack_forget()
+
+        self.progress_label = tk.Label(self.progress_frame, text="", font=("Arial", 9), fg="#555")
+        self.progress_label.pack(pady=2)
+        self.progress_label.pack_forget()
+
+        self._refresh_list()
+
+    def _browse_folder(self):
+        folder = filedialog.askdirectory(initialdir=self.download_path_var.get())
+        if folder:
+            self._folder_path = folder
+            self._update_folder_entry(folder)
+            self._refresh_list()
+
+    def _update_folder_entry(self, path):
+        self.folder_entry.config(state="normal")
+        self.folder_entry.delete(0, tk.END)
+        self.folder_entry.insert(0, path)
+        self.folder_entry.config(state="readonly")
+
+    def _refresh_list(self):
+        folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
+        self._folder_path = folder
+        self._update_folder_entry(folder)
+        self.file_listbox.delete(0, tk.END)
+        if not folder or not os.path.exists(folder): return
+        
+        # 支持主流的影片與音訊格式
+        valid_exts = ('.mp4', '.mkv', '.avi', '.flv', '.mov', '.webm', '.ts', '.mp3', '.wav', '.m4a')
+        files = sorted([f for f in os.listdir(folder) if f.lower().endswith(valid_exts)])
+        for f in files: self.file_listbox.insert(tk.END, f)
+
+    def _on_file_select(self, event):
+        sel = self.file_listbox.curselection()
+        if not sel: return
+        filename = self.file_listbox.get(sel[0])
+        full_path = os.path.join(self._folder_path, filename)
+        self.current_file = full_path
+        
+        # 取得檔案大小
+        size_bytes = os.path.getsize(full_path)
+        size_mb = size_bytes / (1024 * 1024)
+        
+        self.info_label.config(text=f"📂 檔名：{filename}\n⚖️ 大小：{size_mb:.2f} MB\n📍 路徑：{full_path}", fg="#333", font=("Arial", 9, "bold"))
+        self.convert_btn.config(state="normal")
+
+        # 自動搜尋同目錄下同名且副檔名為 .srt 的檔案
+        base, _ = os.path.splitext(filename)
+        srt_name = f"{base}.srt"
+        srt_path = os.path.join(self._folder_path, srt_name)
+        if os.path.exists(srt_path):
+            self.sub_path_var.set(srt_path)
+            self.merge_sub_var.set(True)
+            self._on_sub_chk_change()
+        else:
+            self.sub_path_var.set("")
+            self.merge_sub_var.set(False)
+            self._on_sub_chk_change()
+
+    def _on_format_combo_change(self, event):
+        fmt = self.format_combo.get()
+        if "MP3" in fmt or "WAV" in fmt:
+            # 音訊格式隱藏解析度、編碼速度與外掛字幕設定
+            self.row2.pack_forget()
+            self.row3.pack_forget()
+            self.sub_row.pack_forget()
+        else:
+            # 影片格式顯示解析度、編碼速度與外掛字幕設定
+            self.row2.pack(fill="x", pady=5)
+            self.row3.pack(fill="x", pady=5)
+            self.sub_row.pack(fill="x", pady=5)
+
+    def _on_sub_chk_change(self):
+        state = "normal" if self.merge_sub_var.get() else "disabled"
+        self.sub_btn.config(state=state)
+        if self.merge_sub_var.get() and not self.sub_path_var.get():
+            self._browse_srt()
+
+    def _browse_srt(self):
+        initial_dir = self._folder_path or self.download_path_var.get()
+        f = filedialog.askopenfilename(
+            initialdir=initial_dir,
+            filetypes=[("字幕檔案", "*.srt"), ("所有檔案", "*.*")]
+        )
+        if f:
+            self.sub_path_var.set(f)
+            self.merge_sub_var.set(True)
+            self._on_sub_chk_change()
+
+    def _do_convert(self):
+        if not self.current_file: return
+        
+        in_path = self.current_file
+        folder = self._folder_path
+        base, _ = os.path.splitext(os.path.basename(in_path))
+        
+        # 決定目標副檔名與格式
+        fmt_sel = self.format_combo.get()
+        if "MP4" in fmt_sel:
+            out_ext = ".mp4"
+        elif "MKV" in fmt_sel:
+            out_ext = ".mkv"
+        elif "MP3" in fmt_sel:
+            out_ext = ".mp3"
+        else:
+            out_ext = ".wav"
+            
+        out_name = f"{base}_converted{out_ext}"
+        out_path = os.path.join(folder, out_name)
+        
+        # 防撞名機制
+        base_out = f"{base}_converted"
+        counter = 1
+        while os.path.exists(out_path):
+            out_path = os.path.join(folder, f"{base_out}({counter}){out_ext}")
+            counter += 1
+            
+        self.convert_btn.config(state="disabled")
+        self.status_label.config(text="🎬 影音轉檔壓縮中，這可能需要幾分鐘，請稍候...", fg="blue")
+        self.progress_bar['value'] = 0
+        self.progress_label.config(text="正在分析影音結構，請稍候...")
+        
+        # 背景線程轉檔
+        threading.Thread(target=self._run_ffmpeg_convert, args=(in_path, out_path, fmt_sel), daemon=True).start()
+
+    def _run_ffmpeg_convert(self, in_path, out_path, fmt_sel):
+        try:
+            # 取得影片總時長
+            total_seconds = self._get_video_duration(in_path)
+            if total_seconds > 0:
+                self.parent.after(0, lambda: self.progress_bar.pack(fill="x", pady=5))
+                self.parent.after(0, lambda: self.progress_label.pack(pady=2))
+            
+            # 基本命令
+            cmd = ["ffmpeg", "-y", "-i", in_path]
+            
+            if "MP3" in fmt_sel:
+                # 轉為高品質音訊
+                cmd += ["-vn", "-acodec", "libmp3lame", "-ab", "320k", out_path]
+            elif "WAV" in fmt_sel:
+                # 轉為無損音訊
+                cmd += ["-vn", out_path]
+            else:
+                # 影片格式轉換及畫質壓縮
+                scale = self.scale_combo.get()
+                vf_args = []
+                
+                # 解析度降低處理
+                if "1080p" in scale:
+                    vf_args.append("scale=-2:1080")
+                elif "720p" in scale:
+                    vf_args.append("scale=-2:720")
+                elif "480p" in scale:
+                    vf_args.append("scale=-2:480")
+                
+                # 外掛字幕合併
+                if self.merge_sub_var.get() and self.sub_path_var.get():
+                    sub_path = self.sub_path_var.get()
+                    if os.path.exists(sub_path):
+                        escaped_sub = self._escape_ffmpeg_path(sub_path)
+                        vf_args.append(f"subtitles='{escaped_sub}'")
+                
+                if vf_args:
+                    cmd += ["-vf", ",".join(vf_args)]
+                    
+                # 設定轉檔速度 (Preset)
+                speed = self.speed_combo.get()
+                preset_val = "medium"
+                if "極速" in speed:
+                    preset_val = "veryfast"
+                elif "高品質" in speed:
+                    preset_val = "slow"
+                    
+                # h264 編碼器與 aac 音訊編碼
+                cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "aac", "-b:a", "192k", out_path]
+                
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+
+            start_time = time.time()
+            time_pattern = re.compile(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)")
+            speed_pattern = re.compile(r"speed=\s*(\d+\.?\d*)x")
+
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                line = line.strip()
+                
+                # 解析時間進度
+                time_match = time_pattern.search(line)
+                if time_match and total_seconds > 0:
+                    h, m, s = time_match.group(1), time_match.group(2), time_match.group(3)
+                    curr_seconds = int(h) * 3600 + int(m) * 60 + float(s)
+                    
+                    # 計算百分比
+                    percent = min(100.0, max(0.0, (curr_seconds / total_seconds) * 100))
+                    
+                    # 解析速度
+                    speed_match = speed_pattern.search(line)
+                    speed_str = f"{speed_match.group(1)}x" if speed_match else "N/A"
+                    
+                    # 計算剩餘時間 (ETA)
+                    elapsed = time.time() - start_time
+                    if curr_seconds > 0:
+                        remaining_seconds = max(0.0, (total_seconds - curr_seconds) * (elapsed / curr_seconds))
+                        eta_str = self._format_eta(remaining_seconds)
+                    else:
+                        eta_str = "計算中..."
+                        
+                    # 格式化顯示文字
+                    curr_time_str = f"{int(curr_seconds)//60:02d}:{int(curr_seconds)%60:02d}"
+                    total_time_str = f"{int(total_seconds)//60:02d}:{int(total_seconds)%60:02d}"
+                    
+                    progress_text = f"🔄 進度: {percent:.1f}% ({curr_time_str} / {total_time_str}) | 速度: {speed_str} | 剩餘時間: {eta_str}"
+                    
+                    # 更新主執行緒 UI
+                    self.parent.after(0, lambda p=percent, t=progress_text: self._update_progress_ui(p, t))
+
+            process.wait()
+
+            if process.returncode == 0:
+                self.parent.after(0, lambda: self.status_label.config(text=f"✅ 轉檔成功：{os.path.basename(out_path)}", fg="green"))
+                self.parent.after(0, self._refresh_list)
+            else:
+                # 如果編碼器出錯，退回到預設模式
+                self.parent.after(0, lambda: self.status_label.config(text="❌ 轉檔失敗，請確認檔案格式是否受支援", fg="red"))
+        except Exception as e:
+            self.parent.after(0, lambda: self.status_label.config(text=f"❌ 錯誤：{str(e)}", fg="red"))
+        finally:
+            self.parent.after(0, lambda: self.convert_btn.config(state="normal"))
+            self.parent.after(0, lambda: self.progress_bar.pack_forget())
+            self.parent.after(0, lambda: self.progress_label.pack_forget())
+
+    def _get_video_duration(self, file_path):
+        # 1. 嘗試使用 ffprobe 快速取得時長
+        try:
+            cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file_path]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if res.returncode == 0 and res.stdout.strip():
+                return float(res.stdout.strip())
+        except Exception:
+            pass
+        
+        # 2. 如果 ffprobe 失敗，嘗試使用 ffmpeg 解析標頭
+        try:
+            cmd = ["ffmpeg", "-i", file_path]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            match = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", res.stderr)
+            if match:
+                h, m, s = float(match.group(1)), float(match.group(2)), float(match.group(3))
+                return h * 3600 + m * 60 + s
+        except Exception:
+            pass
+        return 0.0
+
+    def _update_progress_ui(self, value, text):
+        self.progress_bar['value'] = value
+        self.progress_label.config(text=text)
+
+    def _format_eta(self, seconds):
+        s = int(seconds)
+        h = s // 3600
+        m = (s % 3600) // 60
+        sec = s % 60
+        if h > 0:
+            return f"{h:02d}:{m:02d}:{sec:02d}"
+        return f"{m:02d}:{sec:02d}"
+
+    def _escape_ffmpeg_path(self, path):
+        # 將 Windows 反斜線 \ 轉換為正斜線 /
+        p = path.replace("\\", "/")
+        # 處理 Windows 磁碟機號的冒號 (例如 C: 轉換為 C\\:)，防範 FFmpeg 濾鏡解析出錯
+        if ":" in p:
+            drive, rest = p.split(":", 1)
+            p = f"{drive}\\\\:{rest}"
+        return p
 
 
 # ===========================================================================

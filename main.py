@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.2.7"
+APP_VERSION = "2.2.8"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 try:
@@ -33,7 +33,7 @@ class ScrollableFrame(ttk.Frame):
     def __init__(self, container, *args, **kwargs):
         super().__init__(container, *args, **kwargs)
         self.canvas = tk.Canvas(self, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.scrollable_frame = ttk.Frame(self.canvas)
 
         self.scrollable_frame.bind(
@@ -43,11 +43,17 @@ class ScrollableFrame(ttk.Frame):
             )
         )
 
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
         self.canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        self.scrollbar.pack(side="right", fill="y")
+        
+        # 讓內部 frame 寬度填滿 canvas，以便靠右排版正常運作
+        self.canvas.bind(
+            "<Configure>",
+            lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width)
+        )
         
         self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
@@ -74,7 +80,7 @@ class YouTubeDownloaderGUI:
     def __init__(self, root):
         self.root = root
         self.root.title(f"CYT_網路影音下載器 v{APP_VERSION}")
-        self.root.geometry("850x700")
+        self.root.geometry("850x730")
         self.root.resizable(False, False)
         
         self.app_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
@@ -267,8 +273,15 @@ class YouTubeDownloaderGUI:
         self.title_label.pack(pady=5, padx=10)
         
         self.select_btn_frame = tk.Frame(self.info_frame)
-        tk.Button(self.select_btn_frame, text="全部勾選", command=self.select_all, font=("Arial", 10), bg="#4CAF50", fg="white").pack(side="left", padx=5)
-        tk.Button(self.select_btn_frame, text="取消全選", command=self.deselect_all, font=("Arial", 10)).pack(side="left", padx=5)
+        self.select_all_btn = tk.Button(self.select_btn_frame, text="全部勾選", command=self.select_all, font=("Arial", 10), bg="#4CAF50", fg="white")
+        self.select_all_btn.pack(side="left", padx=5)
+        
+        self.deselect_all_btn = tk.Button(self.select_btn_frame, text="取消全選", command=self.deselect_all, font=("Arial", 10))
+        self.deselect_all_btn.pack(side="left", padx=5)
+        
+        # 本頁全選與本頁取消按鈕，預先建立但不 pack，由 show_playlist 動態決定是否 pack
+        self.select_page_btn = tk.Button(self.select_btn_frame, text="本頁全部勾選", command=self.select_page, font=("Arial", 10), bg="#2196F3", fg="white")
+        self.deselect_page_btn = tk.Button(self.select_btn_frame, text="本頁全部取消", command=self.deselect_page, font=("Arial", 10))
         
         # 分頁控制
         self.prev_btn = tk.Button(self.select_btn_frame, text="◀ 上一頁", command=self.prev_page, font=("Arial", 9))
@@ -277,6 +290,8 @@ class YouTubeDownloaderGUI:
         self.page_label.pack(side="left")
         self.next_btn = tk.Button(self.select_btn_frame, text="下一頁 ▶", command=self.next_page, font=("Arial", 9))
         self.next_btn.pack(side="left", padx=10)
+ 
+        self.selection_label = tk.Label(self.select_btn_frame, text="已勾選: 0 / 0", font=("Arial", 10, "bold"), fg="#E91E63")
 
         self.selection_label = tk.Label(self.select_btn_frame, text="已勾選: 0 / 0", font=("Arial", 10, "bold"), fg="#E91E63")
         self.selection_label.pack(side="left", padx=15)
@@ -359,6 +374,24 @@ class YouTubeDownloaderGUI:
     def deselect_all(self):
         for var in self.playlist_all_vars:
             var.set(False)
+        self.update_selection_count()
+
+    def select_page(self):
+        if not hasattr(self, 'playlist_all_vars') or not self.playlist_all_vars:
+            return
+        start_idx = self.playlist_current_page * 50
+        end_idx = min(start_idx + 50, len(self.playlist_all_vars))
+        for i in range(start_idx, end_idx):
+            self.playlist_all_vars[i].set(True)
+        self.update_selection_count()
+
+    def deselect_page(self):
+        if not hasattr(self, 'playlist_all_vars') or not self.playlist_all_vars:
+            return
+        start_idx = self.playlist_current_page * 50
+        end_idx = min(start_idx + 50, len(self.playlist_all_vars))
+        for i in range(start_idx, end_idx):
+            self.playlist_all_vars[i].set(False)
         self.update_selection_count()
 
     def update_selection_count(self):
@@ -840,6 +873,10 @@ class YouTubeDownloaderGUI:
                         def on_choice(choice):
                             dialog.destroy()
                             if choice in [1, 2]:
+                                if choice == 1:
+                                    self.playlist_all_entries = self.playlist_all_entries[:50]
+                                    self.playlist_all_vars = self.playlist_all_vars[:50]
+                                    self.playlist_status_labels = self.playlist_status_labels[:50]
                                 self.root.after(0, lambda: self.show_playlist(0))
                             else:
                                 self.update_progress_ui(0, "已取消解析", "blue")
@@ -1018,6 +1055,14 @@ class YouTubeDownloaderGUI:
         total_items = len(self.playlist_all_entries)
         total_pages = math.ceil(total_items / 50)
         self.playlist_current_page = page
+        
+        # 當總數超過 50 筆且具有分頁時，自動動態顯示「本頁全部勾選」與「本頁全部取消」
+        if total_items > 50:
+            self.select_page_btn.pack(side="left", padx=5, after=self.deselect_all_btn)
+            self.deselect_page_btn.pack(side="left", padx=5, after=self.select_page_btn)
+        else:
+            self.select_page_btn.pack_forget()
+            self.deselect_page_btn.pack_forget()
         
         self.title_label.config(text=f"【播放清單】\n{title} (共 {total_items} 部影片)")
         self.page_label.config(text=f"第 {page + 1} / {total_pages} 頁")

@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.3.2"
+APP_VERSION = "2.3.3"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 
@@ -704,14 +704,14 @@ class YouTubeDownloaderGUI:
                 self.root.after(0, lambda: self.update_progress_ui(100, "下載完成，正在解壓縮元件...", "orange"))
                 try:
                     with zipfile.ZipFile(new_zip_path, 'r') as zip_ref:
-                        # 尋找 ZIP 內的 exe 與 程式說明.txt
+                        # 尋找 ZIP 內的 exe 與 使用說明.txt / 程式說明.txt
                         for name in zip_ref.namelist():
                             lname = name.lower()
                             if lname.endswith('.exe'):
                                 with zip_ref.open(name) as zf, open(new_exe_path, 'wb') as f:
                                     shutil.copyfileobj(zf, f)
-                            elif "程式說明.txt" in name:
-                                target_txt = os.path.join(self.app_dir, "程式說明.txt")
+                            elif "使用說明.txt" in name or "程式說明.txt" in name:
+                                target_txt = os.path.join(self.app_dir, "使用說明.txt")
                                 with zip_ref.open(name) as zf, open(target_txt, 'wb') as f:
                                     shutil.copyfileobj(zf, f)
                     # 刪除暫存的 ZIP

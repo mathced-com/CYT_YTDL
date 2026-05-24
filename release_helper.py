@@ -74,24 +74,14 @@ def main():
         return
 
     suggested_version = get_next_version(current_version)
-    print(f"目前版本為: {current_version}")
+    print(f"目前專案版本為: {current_version}")
     
-    new_version = input(f"請輸入本次版本號 [直接按 Enter 預設為 {suggested_version}]: ").strip()
-    if not new_version:
-        new_version = suggested_version
-        
-    print(f"\n[OK] 本次設定版本: {new_version}")
-    
-    update_notes = input("\n請簡單輸入這次更新的內容 (例如: 修復閃退問題): ").strip()
-    if not update_notes:
-        update_notes = "一般更新與修復"
-        
     print("\n==============================================")
-    print("      請選擇本次發布模式 (Release Mode)")
+    print("      請選擇本次執行模式 (Action Mode)")
     print("==============================================")
-    print("  [1] 🚀 發布「正式穩定版」 (所有使用者會下載到此最新版)")
-    print("  [2] 🧪 發布「測試預覽版」 (Pre-release，GitHub 標記為測試版，不影響穩定版)")
-    print("  [3] 💾 僅「上傳備份程式碼」 (僅同步程式碼至 GitHub，不打包 EXE、不發布 Release)")
+    print("  [1] 🚀 發布「正式穩定版」 (自動更新版，所有使用者下載此最新版)")
+    print("  [2] 🧪 發布「測試預覽版」 (Pre-release，GitHub 標記為測試版)")
+    print("  [3] 💾 僅「上傳備份程式碼」 (僅同步目前代碼至 GitHub，不打包、不發布)")
     print("==============================================")
     
     mode_choice = input("請輸入選項 [預設為 1]: ").strip()
@@ -102,27 +92,42 @@ def main():
     # 模式 3：僅備份程式碼
     # ==========================================
     if mode_choice == "3":
-        print(f"\n[1/2] 正在更新 main.py 與 使用說明.md 內的版本號為 {new_version}...")
-        try:
-            new_content = re.sub(r'APP_VERSION\s*=\s*"[^"]+"', f'APP_VERSION = "{new_version}"', content)
-            with open("main.py", "w", encoding="utf-8") as f:
-                f.write(new_content)
-            if os.path.exists("使用說明.md"):
-                with open("使用說明.md", "r", encoding="utf-8") as f:
-                    md_content = f.read()
-                md_content = re.sub(r'使用說明 \(v[^)]+\)', f'使用說明 (v{new_version})', md_content)
-                md_content = re.sub(r'Version [0-9.]+', f'Version {new_version}', md_content)
-                with open("使用說明.md", "w", encoding="utf-8") as f:
-                    f.write(md_content)
+        print(f"\n[1/2] 正在準備備份程式碼 (目前版本保持為: {current_version})...")
+        update_notes = input("請簡單輸入本次備份的修改說明 (直接 Enter 預設為 '備份與同步程式碼'): ").strip()
+        if not update_notes:
+            update_notes = "備份與同步程式碼"
+            
+        change_ver = input(f"是否需要順便變更程式版本號？(y/N) [目前為 {current_version}]: ").strip().lower()
+        if change_ver == 'y':
+            new_version = input(f"請輸入新版本號 [直接按 Enter 預設為 {suggested_version}]: ").strip()
+            if not new_version:
+                new_version = suggested_version
+            
+            print(f"➔ 正在將 main.py 與 使用說明.md 內部的版本號更新為: {new_version}...")
+            try:
+                new_content = re.sub(r'APP_VERSION\s*=\s*"[^"]+"', f'APP_VERSION = "{new_version}"', content)
+                with open("main.py", "w", encoding="utf-8") as f:
+                    f.write(new_content)
+                if os.path.exists("使用說明.md"):
+                    with open("使用說明.md", "r", encoding="utf-8") as f:
+                        md_content = f.read()
+                    md_content = re.sub(r'使用說明 \(v[^)]+\)', f'使用說明 (v{new_version})', md_content)
+                    md_content = re.sub(r'Version [0-9.]+', f'Version {new_version}', md_content)
+                    with open("使用說明.md", "w", encoding="utf-8") as f:
+                        f.write(md_content)
                 print("      [OK] 版本號已更新。")
-        except Exception as e:
-            print(f"更新版本號失敗: {e}")
-            input("請按 Enter 鍵結束...")
-            return
+                commit_version = new_version
+            except Exception as e:
+                print(f"更新版本號失敗: {e}")
+                input("請按 Enter 鍵結束...")
+                return
+        else:
+            commit_version = current_version
+            print("      [OK] 版本號保持不變。")
 
         print("\n[2/2] 正在將最新程式碼備份到 GitHub...")
         subprocess.run(["git", "add", "."])
-        subprocess.run(["git", "commit", "-m", f"備份程式碼 v{new_version}: {update_notes}"])
+        subprocess.run(["git", "commit", "-m", f"備份程式碼 v{commit_version}: {update_notes}"])
         subprocess.run(["git", "push"])
         print("\n==============================================")
         print("   [OK] 備份完成！程式碼已成功推送上傳 GitHub！")
@@ -140,6 +145,16 @@ def main():
         print("\n無法使用自動上傳，請取消這次發布，或改用手動發布。")
         input("請按 Enter 鍵結束...")
         return
+        
+    new_version = input(f"\n請輸入本次發布的版本號 [直接按 Enter 預設為 {suggested_version}]: ").strip()
+    if not new_version:
+        new_version = suggested_version
+        
+    print(f"[OK] 本次設定發布版本: {new_version}")
+    
+    update_notes = input("\n請簡單輸入這次發布的更新內容 (例如: 修復閃退問題): ").strip()
+    if not update_notes:
+        update_notes = "一般更新與修復"
         
     print(f"\n[2/6] 正在更新 main.py 與 使用說明.md 內的版本號為 {new_version}...")
     try:

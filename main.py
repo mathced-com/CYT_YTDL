@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.3.6"
+APP_VERSION = "2.3.7"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 # ===========================================================================
@@ -1190,7 +1190,7 @@ class YouTubeDownloaderGUI:
             chk = tk.Checkbutton(row_frame, variable=var, command=self.update_selection_count)
             chk.pack(side="left", padx=5)
             
-            status_lbl = tk.Label(row_frame, text="⏳ 等待下載", fg="gray", font=("Microsoft JhengHei", 9, "bold"))
+            status_lbl = tk.Label(row_frame, text="⏳ 等待下載", fg="gray", font=("Microsoft JhengHei", 9, "bold"), width=14, anchor="w")
             status_lbl.pack(side="left", padx=5)
             if hasattr(self, 'playlist_status_labels') and len(self.playlist_status_labels) > i:
                 self.playlist_status_labels[i] = status_lbl
@@ -3157,15 +3157,15 @@ class VideoTrimmerSubFrame(tk.Frame):
         right_frame = self
 
         # 影片播放容器
-        self.video_container = tk.Frame(right_frame, bg="black", height=280)
-        self.video_container.pack(fill="x", pady=(0, 5))
+        self.video_container = tk.Frame(right_frame, bg="black", height=180)
+        self.video_container.pack(fill="x", pady=(0, 2))
         self.video_container.pack_propagate(False)
         self.video_label = tk.Label(self.video_container, text="請從左側選取影片進行預覽", fg="white", bg="black", font=("Microsoft JhengHei", 10))
         self.video_label.place(relx=0.5, rely=0.5, anchor="center")
 
         # 播放控制按鈕
         ctrl_frame = tk.Frame(right_frame)
-        ctrl_frame.pack(anchor="w", pady=3)
+        ctrl_frame.pack(anchor="w", pady=1)
         tk.Button(ctrl_frame, text="⏮ -5s", command=lambda: self._seek_relative(-5000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
         tk.Button(ctrl_frame, text="◀ -1s", command=lambda: self._seek_relative(-1000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
         tk.Button(ctrl_frame, text="⏪ -0.1s", command=lambda: self._seek_relative(-100), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=1)
@@ -3202,7 +3202,7 @@ class VideoTrimmerSubFrame(tk.Frame):
 
         # 裁剪設定
         trim_lf = tk.LabelFrame(right_frame, text="🎬 裁剪設定", font=("Microsoft JhengHei", 10, "bold"), padx=10, pady=4)
-        trim_lf.pack(fill="x", pady=3)
+        trim_lf.pack(fill="x", pady=1)
 
         # 預覽控制列
         preview_row = tk.Frame(trim_lf)
@@ -3261,7 +3261,7 @@ class VideoTrimmerSubFrame(tk.Frame):
 
         # 動作按鈕區
         action_btn_row = tk.Frame(right_frame)
-        action_btn_row.pack(pady=8)
+        action_btn_row.pack(pady=2)
         self.trim_btn = tk.Button(action_btn_row, text="✂️ 無損快速裁剪", command=self._do_trim,
                                   font=("Microsoft JhengHei", 11, "bold"), bg="#E53935", fg="white", width=18, state="disabled")
         self.trim_btn.pack(side="left", padx=5)
@@ -3860,6 +3860,12 @@ class VideoMergerSubFrame(tk.Frame):
     def _merge_thread(self, out_path):
         temp_files = []
         try:
+            total_seconds = 0.0
+            for item in self.staged_items:
+                if item["type"] == "video":
+                    total_seconds += float(item.get("duration", 0.0))
+                else:
+                    total_seconds += float(item.get("duration", 0.0)) / 1000.0
             out_folder = os.path.dirname(out_path)
             res_sel = self.res_combo.get()
             
@@ -3937,9 +3943,8 @@ class VideoMergerSubFrame(tk.Frame):
                     else:
                         prepared_files.append(vid_path)
 
-            self.after(0, lambda: self.status_label.config(text="⚙️ 第二階段：進行多檔畫質壓縮與對齊重編碼合併..."))
-            self.after(0, lambda: self.progress_bar.config(mode="indeterminate"))
-            self.after(0, lambda: self.progress_bar.start(10))
+            self.after(0, lambda: self.status_label.config(text="⚙️ 第二階段：進行多檔畫質壓縮與對齊重編碼合併 (0%)..."))
+            self.after(0, lambda: self.progress_bar.config(mode="determinate", value=0))
 
             N = len(prepared_files)
             filter_parts = []
@@ -3966,12 +3971,41 @@ class VideoMergerSubFrame(tk.Frame):
                 out_path
             ])
             
-            import subprocess
-            res_m = subprocess.run(cmd_m, capture_output=True, text=True)
-            self.after(0, lambda: self.progress_bar.stop())
+            process = subprocess.Popen(
+                cmd_m,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            
+            import re
+            time_pattern = re.compile(r'time=(\d+):(\d+):(\d+\.\d+)')
+            
+            while True:
+                line = process.stdout.readline()
+                if not line: break
+                
+                match = time_pattern.search(line)
+                if match and total_seconds > 0:
+                    hours = int(match.group(1))
+                    minutes = int(match.group(2))
+                    seconds = float(match.group(3))
+                    current_seconds = hours * 3600 + minutes * 60 + seconds
+                    percent = min(100, int((current_seconds / total_seconds) * 100))
+                    
+                    self.after(0, lambda p=percent: self.progress_bar.config(value=p))
+                    self.after(0, lambda p=percent: self.status_label.config(
+                        text=f"⚙️ 第二階段：進行多檔畫質壓縮與對齊重編碼合併 ({p}%)..."
+                    ))
+            
+            process.wait()
             self.after(0, lambda: self.progress_bar.config(mode="determinate", value=100))
 
-            if res_m.returncode == 0:
+            if process.returncode == 0:
                 self.after(0, lambda: self.status_label.config(text=f"✅ 影片合併成功！儲存至：{os.path.basename(out_path)}", fg="green"))
                 self.after(0, lambda: messagebox.showinfo("成功", f"影片合併成功！儲存至：\n{os.path.basename(out_path)}"))
                 self.after(0, self.controller._refresh_list)
@@ -4470,8 +4504,82 @@ class VideoConverterTab:
         vobs = self.detected_vobs if is_merge else None
         threading.Thread(target=self._run_ffmpeg_convert, args=(in_path, out_path, fmt_sel, vobs), daemon=True).start()
 
+    def _get_matching_ifo(self, path):
+        try:
+            import os, re
+            dir_name = os.path.dirname(path)
+            file_name = os.path.basename(path)
+            match = re.match(r'^(vts_(\d+))_\d+\.vob$', file_name.lower())
+            if match:
+                vts_prefix = match.group(1).upper()
+                ifo_name = f"{vts_prefix}_0.IFO"
+                ifo_path = os.path.join(dir_name, ifo_name)
+                if not os.path.exists(ifo_path):
+                    ifo_path = os.path.join(dir_name, ifo_name.lower())
+                if os.path.exists(ifo_path):
+                    return ifo_path
+        except Exception:
+            pass
+        return None
+
+    def _extract_ifo_palette(self, ifo_path):
+        try:
+            import struct
+            with open(ifo_path, "rb") as f:
+                ifo_data = f.read()
+            
+            # 讀取 VTS_PGCI 磁區位移值 (Offset 0xCC)
+            pgci_sector = struct.unpack(">I", ifo_data[0xCC:0xD0])[0]
+            pgci_offset = pgci_sector * 2048
+            
+            # 讀取第一個 PGC 的相對起始位置
+            pgc_relative_start = struct.unpack(">I", ifo_data[pgci_offset + 8 + 4 : pgci_offset + 8 + 8])[0]
+            pgc_start = pgci_offset + pgc_relative_start
+            
+            # 字幕調色盤 (CLUT) 位移為 PGC 起始位置 + 0x9C
+            clut_offset = pgc_start + 0x9C
+            clut_data = ifo_data[clut_offset : clut_offset + 64]
+            
+            if len(clut_data) < 64:
+                return None
+                
+            hex_colors = []
+            for i in range(16):
+                chunk = clut_data[i*4 : (i+1)*4]
+                _, y, cr, cb = struct.unpack(">BBBB", chunk)
+                
+                # YCbCr 轉 RGB (採用 SD 影片 ITU-R BT.601 標準公式)
+                r = 1.164 * (y - 16) + 1.596 * (cr - 128)
+                g = 1.164 * (y - 16) - 0.813 * (cr - 128) - 0.391 * (cb - 128)
+                b = 1.164 * (y - 16) + 2.018 * (cb - 128)
+                
+                r = max(0, min(255, int(round(r))))
+                g = max(0, min(255, int(round(g))))
+                b = max(0, min(255, int(round(b))))
+                hex_colors.append(f"{r:02x}{g:02x}{b:02x}")
+                
+            return ",".join(hex_colors)
+        except Exception:
+            return None
+
     def _run_ffmpeg_convert(self, in_path, out_path, fmt_sel, vob_list=None):
         try:
+            # DVD 光碟機自適應啟動防禦（預讀以強制光碟機運轉 spin-up，防範 Windows 讀取未就緒/權限拒絕錯誤）
+            if in_path.lower().endswith(".vob"):
+                try:
+                    with open(in_path, "rb") as f:
+                        f.read(1)
+                except Exception:
+                    pass
+            if vob_list:
+                for p in vob_list:
+                    if p.lower().endswith(".vob"):
+                        try:
+                            with open(p, "rb") as f:
+                                f.read(1)
+                        except Exception:
+                            pass
+                            
             if vob_list:
                 total_seconds = sum(self._get_video_duration(p) for p in vob_list)
             else:
@@ -4481,12 +4589,25 @@ class VideoConverterTab:
                 self.parent.after(0, lambda: self.progress_bar.pack(fill="x", pady=5))
                 self.parent.after(0, lambda: self.progress_label.pack(pady=2))
             
+            is_vob = in_path.lower().endswith(".vob") or (vob_list and vob_list[0].lower().endswith(".vob"))
+            cmd = [ffmpeg_path, "-y"]
+            
+            if is_vob:
+                # 解決連續合併時字幕軌太遲出現，導致 FFmpeg 因預設 probesize 太小偵測不到的 Bug
+                cmd += ["-probesize", "50M", "-analyzeduration", "50M"]
+                
+            palette_str = None
+            if is_vob:
+                ifo_path = self._get_matching_ifo(in_path)
+                if ifo_path and os.path.exists(ifo_path):
+                    palette_str = self._extract_ifo_palette(ifo_path)
+            
             if vob_list:
                 vob_names = [os.path.basename(p) for p in vob_list]
                 concat_str = "concat:" + "|".join(vob_names)
-                cmd = [ffmpeg_path, "-y", "-i", concat_str]
+                cmd += ["-i", concat_str]
             else:
-                cmd = [ffmpeg_path, "-y", "-i", in_path]
+                cmd += ["-i", in_path]
             
             if "MP3" in fmt_sel:
                 cmd += ["-vn", "-acodec", "libmp3lame", "-ab", "320k", out_path]
@@ -4535,6 +4656,11 @@ class VideoConverterTab:
                             
                     if vf_args:
                         cmd += ["-vf", ",".join(vf_args)]
+                        
+                    has_sub_checked_all = any(var.get() for var in self.dvd_sub_vars.values())
+                    if has_sub_checked_all and palette_str:
+                        cmd += ["-palette", palette_str]
+                        
                     cmd.append(out_path)
                 else:
                     if self.merge_sub_var.get() and self.sub_path_var.get():
@@ -4563,9 +4689,15 @@ class VideoConverterTab:
             import re
             time_pattern = re.compile(r'time=(\d+):(\d+):(\d+\.\d+)')
             
+            last_lines = []
             while True:
                 line = process.stdout.readline()
                 if not line: break
+                
+                if line.strip():
+                    last_lines.append(line.strip())
+                    if len(last_lines) > 15:
+                        last_lines.pop(0)
                 
                 match = time_pattern.search(line)
                 if match and total_seconds > 0:
@@ -4582,7 +4714,8 @@ class VideoConverterTab:
             if process.returncode == 0:
                 self.parent.after(0, lambda: self._conversion_complete(out_path))
             else:
-                self.parent.after(0, lambda: self._conversion_failed())
+                err_log = "\n".join(last_lines)
+                self.parent.after(0, lambda: self._conversion_failed(err_log))
         except Exception as e:
             err_msg = str(e)
             self.parent.after(0, lambda: messagebox.showerror("轉檔錯誤", f"影音轉檔時發生錯誤：{err_msg}"))
@@ -4602,9 +4735,12 @@ class VideoConverterTab:
         messagebox.showinfo("成功", f"影音格式轉換與畫質壓縮完成！\n\n儲存於：\n{os.path.basename(out_path)}")
         self._refresh_list()
 
-    def _conversion_failed(self):
+    def _conversion_failed(self, err_log=None):
         self.status_label.config(text="❌ 影音轉檔失敗，請確認編碼設定！", fg="red")
-        messagebox.showerror("轉檔失敗", "FFmpeg 在轉檔時發生錯誤，請確認影片來源或調整解析度。")
+        msg = "FFmpeg 在轉檔時發生錯誤，請確認影片來源或調整解析度。"
+        if err_log:
+            msg += f"\n\n詳細錯誤日誌：\n{err_log}"
+        messagebox.showerror("轉檔失敗", msg)
 
 
 if __name__ == "__main__":

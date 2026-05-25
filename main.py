@@ -17,8 +17,21 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.3.5"
+APP_VERSION = "2.3.6"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
+
+# ===========================================================================
+# 全域 FFmpeg 與 FFprobe 絕對路徑自適應解析
+# ===========================================================================
+_app_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+ffmpeg_path = os.path.join(_app_dir, "ffmpeg.exe")
+ffprobe_path = os.path.join(_app_dir, "ffprobe.exe")
+
+if not os.path.exists(ffmpeg_path):
+    ffmpeg_path = "ffmpeg"
+if not os.path.exists(ffprobe_path):
+    ffprobe_path = "ffprobe"
+
 
 
 # ===========================================================================
@@ -220,14 +233,12 @@ class YouTubeDownloaderGUI:
         sel = self.notebook.select()
         if not sel: return
         text = self.notebook.tab(sel, "text")
-        if "MP3 裁剪" in text:
-            self.trimmer._refresh_list()
-        elif "影片裁剪" in text:
-            self.video_trimmer._refresh_list()
-        elif "合併" in text:
-            self.merger._refresh_src_list()
+        if "音樂編輯" in text:
+            if hasattr(self, 'audio_editor'): self.audio_editor._refresh_list()
+        elif "影片編輯" in text:
+            if hasattr(self, 'video_editor'): self.video_editor._refresh_list()
         elif "轉檔" in text:
-            self.converter._refresh_list()
+            if hasattr(self, 'converter'): self.converter._refresh_list()
 
     def create_widgets(self):
         # === 全局標題列 (在 Notebook 之上) ===
@@ -274,6 +285,21 @@ class YouTubeDownloaderGUI:
         )
         self.help_btn.pack(side="right", padx=5)
 
+        # 右側檢查主程式更新按鈕 (Flat UI, 扁平化深黃色)
+        self.update_btn = tk.Button(
+            header_frame,
+            text="🔄 檢查主程式更新",
+            command=self.check_app_update,
+            font=("Microsoft JhengHei", 10, "bold"),
+            bg="#FFB300",
+            fg="white",
+            relief="flat",
+            padx=10,
+            pady=3,
+            cursor="hand2"
+        )
+        self.update_btn.pack(side="right", padx=5)
+
         # === 標簿頁 (Notebook) ===
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=5)
@@ -282,24 +308,19 @@ class YouTubeDownloaderGUI:
         tab_download = tk.Frame(self.notebook)
         self.notebook.add(tab_download, text="  ⬇️ 影音下載器  ")
         
-        # Tab 2: MP3 裁剪工具
-        tab_trim = tk.Frame(self.notebook)
-        self.notebook.add(tab_trim, text="  ✂️ MP3 裁剪工具  ")
-        self.trimmer = MP3TrimmerTab(tab_trim, self.download_path)
+        # Tab 2: 音樂編輯工具
+        tab_audio_editor = tk.Frame(self.notebook)
+        self.notebook.add(tab_audio_editor, text="  🎵 音樂編輯工具  ")
+        self.audio_editor = AudioEditorTab(tab_audio_editor, self.download_path)
         
-        # Tab 3: MP3 合併工具
-        tab_merge = tk.Frame(self.notebook)
-        self.notebook.add(tab_merge, text="  🔗 MP3 合併工具  ")
-        self.merger = MP3MergerTab(tab_merge, self.download_path)
+        # Tab 3: 影片編輯工具
+        tab_video_editor = tk.Frame(self.notebook)
+        self.notebook.add(tab_video_editor, text="  🎬 影片編輯工具  ")
+        self.video_editor = VideoEditorTab(tab_video_editor, self.download_path)
         
-        # Tab 4: 影片裁剪工具
-        tab_video_trim = tk.Frame(self.notebook)
-        self.notebook.add(tab_video_trim, text="  🎬 影片裁剪工具  ")
-        self.video_trimmer = VideoTrimmerTab(tab_video_trim, self.download_path)
-        
-        # Tab 5: 影音轉檔工具
+        # Tab 4: 影音轉檔器
         tab_converter = tk.Frame(self.notebook)
-        self.notebook.add(tab_converter, text="  🔄 影音轉檔工具  ")
+        self.notebook.add(tab_converter, text="  🔄 影音轉檔器  ")
         self.converter = VideoConverterTab(tab_converter, self.download_path)
         
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
@@ -427,10 +448,10 @@ class YouTubeDownloaderGUI:
         self.cancel_btn = tk.Button(btn_frame, text="取消", font=("Microsoft JhengHei", 10), command=self.cancel_download, state="disabled", bg="#f44336", fg="white", width=8)
         self.cancel_btn.pack(side="left", padx=5)
         
-        # 移除 frozen 限制，讓 exe 使用者也能修復核心
-        tk.Button(btn_frame, text="修復下載核心", command=self.update_ytdlp, bg="#FF9800", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left", padx=5)
-            
-        tk.Button(btn_frame, text="檢查主程式更新", command=self.check_app_update, bg="#FF9800", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left", padx=5)
+        # 僅在開發環境 (非 frozen EXE) 顯示修復下載核心按鈕
+        if not getattr(sys, 'frozen', False):
+            self.repair_btn = tk.Button(btn_frame, text="修復下載核心", command=self.update_ytdlp, bg="#FF9800", fg="white", font=("Microsoft JhengHei", 9))
+            self.repair_btn.pack(side="left", padx=5)
 
     def select_all(self):
         for var in self.playlist_all_vars:
@@ -1904,13 +1925,152 @@ class MCIPlayer:
 
 
 # ===========================================================================
-# MP3TrimmerTab：MP3 裁剪工具的完整 UI 類別
+# AudioEditorTab：整合音訊裁剪與合併，共享左側 MP3 檔案列表
 # ===========================================================================
-
-class MP3TrimmerTab:
+class AudioEditorTab:
     def __init__(self, parent, download_path_var):
         self.parent = parent
         self.download_path_var = download_path_var
+        self.current_tab = "trim"
+        self._folder_path = self.download_path_var.get()
+        self._build_ui()
+
+    def _build_ui(self):
+        # 左側：檔案列表區
+        self.left_frame = tk.Frame(self.parent, width=210)
+        self.left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
+        self.left_frame.pack_propagate(False)
+
+        tk.Label(self.left_frame, text="MP3 檔案列表", font=("Microsoft JhengHei", 11, "bold")).pack(anchor="w")
+
+        folder_frame = tk.Frame(self.left_frame)
+        folder_frame.pack(fill="x", pady=3)
+        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Microsoft JhengHei", 8))
+        self.folder_entry.pack(side="left", fill="x", expand=True)
+        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
+        tk.Button(folder_frame, text="開啟", command=self._open_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
+
+        self.file_listbox = tk.Listbox(self.left_frame, font=("Microsoft JhengHei", 9), selectmode="single", activestyle="dotbox")
+        self.file_listbox.pack(fill="both", expand=True, pady=5)
+        self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
+        self.file_listbox.bind("<Double-Button-1>", self._on_file_double_click)
+
+        # 重新整理與加入合併清單按鈕
+        self.btn_refresh = tk.Button(self.left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Microsoft JhengHei", 9))
+        self.btn_refresh.pack(fill="x", pady=2)
+        
+        self.btn_add_merge = tk.Button(self.left_frame, text="➕ 加入合併清單", command=self._add_to_merge, bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 10, "bold"))
+
+        # 右側：控制區
+        self.right_frame = tk.Frame(self.parent)
+        self.right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
+
+        # 頂部子分頁切換按鈕
+        tab_selector = tk.Frame(self.right_frame)
+        tab_selector.pack(fill="x", pady=(0, 10))
+
+        self.btn_trim = tk.Button(tab_selector, text="✂️ 音訊無損裁剪", font=("Microsoft JhengHei", 10, "bold"),
+                                  command=lambda: self.switch_tab("trim"), relief="flat", cursor="hand2", width=18, height=1)
+        self.btn_trim.pack(side="left", padx=2)
+
+        self.btn_merge = tk.Button(tab_selector, text="🔗 音訊多檔合併", font=("Microsoft JhengHei", 10, "bold"),
+                                   command=lambda: self.switch_tab("merge"), relief="flat", cursor="hand2", width=18, height=1)
+        self.btn_merge.pack(side="left", padx=2)
+
+        # 內容容器
+        self.content_frame = tk.Frame(self.right_frame)
+        self.content_frame.pack(fill="both", expand=True)
+
+        # 子功能模組
+        self.trimmer_sub = MP3TrimmerSubFrame(self.content_frame, self)
+        self.merger_sub = MP3MergerSubFrame(self.content_frame, self)
+
+        self.switch_tab("trim")
+        self._refresh_list()
+
+    def _browse_folder(self):
+        folder = filedialog.askdirectory(initialdir=self.download_path_var.get())
+        if folder:
+            self._folder_path = folder
+            self._update_folder_entry(folder)
+            self._refresh_list()
+
+    def _open_folder(self):
+        folder = self._folder_path or self.download_path_var.get()
+        if folder and os.path.exists(folder):
+            os.startfile(folder)
+        else:
+            messagebox.showerror("錯誤", "找不到指定的資料夾路徑。")
+
+    def _update_folder_entry(self, path):
+        self.folder_entry.config(state="normal")
+        self.folder_entry.delete(0, tk.END)
+        self.folder_entry.insert(0, path)
+        self.folder_entry.config(state="readonly")
+
+    def _refresh_list(self):
+        folder = self._folder_path or self.download_path_var.get()
+        self._folder_path = folder
+        self._update_folder_entry(folder)
+        self.file_listbox.delete(0, tk.END)
+        if not folder or not os.path.exists(folder):
+            return
+        mp3_files = sorted([f for f in os.listdir(folder) if f.lower().endswith('.mp3')])
+        for f in mp3_files:
+            self.file_listbox.insert(tk.END, f)
+
+    def _on_file_select(self, event=None):
+        sel = self.file_listbox.curselection()
+        if not sel:
+            return
+        filename = self.file_listbox.get(sel[0])
+        full_path = os.path.join(self._folder_path, filename)
+        
+        if self.current_tab == "trim":
+            self.trimmer_sub.load_file(full_path)
+            
+    def _on_file_double_click(self, event=None):
+        sel = self.file_listbox.curselection()
+        if not sel:
+            return
+        filename = self.file_listbox.get(sel[0])
+        full_path = os.path.join(self._folder_path, filename)
+        
+        if self.current_tab == "merge":
+            self.merger_sub._add_to_merge_from_path(full_path)
+
+    def _add_to_merge(self):
+        sel = self.file_listbox.curselection()
+        if not sel:
+            return
+        for i in sel:
+            filename = self.file_listbox.get(i)
+            full_path = os.path.join(self._folder_path, filename)
+            self.merger_sub._add_to_merge_from_path(full_path)
+
+    def switch_tab(self, tab):
+        self.trimmer_sub._stop()
+        self.merger_sub._stop()
+        self.current_tab = tab
+        if tab == "trim":
+            self.btn_trim.config(bg="#1976D2", fg="white")
+            self.btn_merge.config(bg="#E0E0E0", fg="black")
+            self.btn_add_merge.pack_forget()
+            self.merger_sub.pack_forget()
+            self.trimmer_sub.pack(fill="both", expand=True)
+        else:
+            self.btn_trim.config(bg="#E0E0E0", fg="black")
+            self.btn_merge.config(bg="#1976D2", fg="white")
+            self.btn_add_merge.pack(fill="x", pady=2)
+            self.trimmer_sub.pack_forget()
+            self.merger_sub.pack(fill="both", expand=True)
+
+
+class MP3TrimmerSubFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.download_path_var = controller.download_path_var
         self.player = MCIPlayer()
         self.current_file = None
         self.total_ms = 0
@@ -1920,41 +2080,19 @@ class MP3TrimmerTab:
         self.end_time_str = tk.StringVar(value="0:00")
         self._update_job = None
         self._seeking = False
-        self._preview_mode = False  # 試聽標記區段模式
-        self._loop_var = tk.BooleanVar(value=False)  # 循環播放開關
+        self._preview_mode = False  
+        self._loop_var = tk.BooleanVar(value=False)  
         self._build_ui()
 
     def _build_ui(self):
-        # === 左側：檔案列表區 ===
-        left_frame = tk.Frame(self.parent, width=210)
-        left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
-        left_frame.pack_propagate(False)
-
-        tk.Label(left_frame, text="MP3 檔案列表", font=("Microsoft JhengHei", 11, "bold")).pack(anchor="w")
-
-        folder_frame = tk.Frame(left_frame)
-        folder_frame.pack(fill="x", pady=3)
-        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Microsoft JhengHei", 8))
-        self.folder_entry.pack(side="left", fill="x", expand=True)
-        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
-        tk.Button(folder_frame, text="開啟", command=self._open_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
-
-        self.file_listbox = tk.Listbox(left_frame, font=("Microsoft JhengHei", 9), selectmode="single", activestyle="dotbox")
-        self.file_listbox.pack(fill="both", expand=True, pady=5)
-        self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
-
-        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Microsoft JhengHei", 9)).pack(fill="x")
-
-        # === 右側：控制區 ===
-        right_frame = tk.Frame(self.parent)
-        right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
+        right_frame = self
 
         # 檔名顯示
         self.file_label = tk.Label(right_frame, text="尚未選取檔案", font=("Microsoft JhengHei", 10, "bold"),
                                    fg="#1565C0", wraplength=480, justify="left")
         self.file_label.pack(anchor="w", pady=(0, 5))
 
-        # 播放控制按鈕（含跳轉±1s/±5s）
+        # 播放控制按鈕
         ctrl_frame = tk.Frame(right_frame)
         ctrl_frame.pack(anchor="w", pady=3)
         tk.Button(ctrl_frame, text="⏮ -5s", command=lambda: self._seek_relative(-5000),
@@ -1974,7 +2112,7 @@ class MP3TrimmerTab:
         self.time_label = tk.Label(ctrl_frame, text="00:00 / 00:00", font=("Microsoft JhengHei", 11), fg="#333")
         self.time_label.pack(side="left", padx=10)
 
-        # 自訂 Canvas 進度條（顯示裁剪範圍色塊與起終點標記）
+        # Canvas 進度條
         canvas_outer = tk.Frame(right_frame, bg="#aaaaaa", pady=1)
         canvas_outer.pack(fill="x", pady=(4, 0))
         self.trim_canvas = tk.Canvas(canvas_outer, height=26, bg="#e0e0e0",
@@ -1994,7 +2132,7 @@ class MP3TrimmerTab:
 
         ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=5)
 
-        # === 裁剪設定 ===
+        # 裁剪設定
         trim_lf = tk.LabelFrame(right_frame, text="✂️ 裁剪設定", font=("Microsoft JhengHei", 10, "bold"), padx=10, pady=6)
         trim_lf.pack(fill="x", pady=3)
 
@@ -2044,7 +2182,6 @@ class MP3TrimmerTab:
         ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=8)
 
         # 輸出設定
-        # 儲存資料夾 Row
         self.out_folder_row = tk.Frame(right_frame)
         self.out_folder_row.pack(fill="x", pady=3)
         tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 10, "bold"), width=12, anchor="w").pack(side="left")
@@ -2071,29 +2208,6 @@ class MP3TrimmerTab:
         self.trim_status = tk.Label(right_frame, text="", font=("Microsoft JhengHei", 10), fg="green")
         self.trim_status.pack()
 
-        # 初始化載入下載資料夾
-        self._refresh_list()
-
-    def _browse_folder(self):
-        folder = filedialog.askdirectory(initialdir=self.download_path_var.get())
-        if folder:
-            self._folder_path = folder
-            self._update_folder_entry(folder)
-            self._refresh_list()
-
-    def _open_folder(self):
-        folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
-        if folder and os.path.exists(folder):
-            os.startfile(folder)
-        else:
-            messagebox.showerror("錯誤", "找不到指定的資料夾路徑。")
-
-    def _update_folder_entry(self, path):
-        self.folder_entry.config(state="normal")
-        self.folder_entry.delete(0, tk.END)
-        self.folder_entry.insert(0, path)
-        self.folder_entry.config(state="readonly")
-
     def _browse_out_folder(self):
         initial_dir = self.out_folder_var.get() or self.download_path_var.get()
         folder = filedialog.askdirectory(initialdir=initial_dir)
@@ -2112,27 +2226,10 @@ class MP3TrimmerTab:
             else:
                 self.out_folder_var.set(folder)
 
-    def _refresh_list(self):
-        folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
-        self._folder_path = folder
-        self._update_folder_entry(folder)
-        self.file_listbox.delete(0, tk.END)
-        if not folder or not os.path.exists(folder):
-            return
-        mp3_files = sorted([f for f in os.listdir(folder) if f.lower().endswith('.mp3')])
-        for f in mp3_files:
-            self.file_listbox.insert(tk.END, f)
-
-    def _on_file_select(self, event):
-        sel = self.file_listbox.curselection()
-        if not sel:
-            return
-        filename = self.file_listbox.get(sel[0])
-        full_path = os.path.join(self._folder_path, filename)
-        
-        # 智慧唯讀性與可寫性探針檢測，決定預設儲存路徑
+    def load_file(self, path):
+        folder = os.path.dirname(path)
         is_writable = True
-        test_file = os.path.join(self._folder_path, ".write_test")
+        test_file = os.path.join(folder, ".write_test")
         try:
             with open(test_file, "w") as f:
                 pass
@@ -2141,11 +2238,11 @@ class MP3TrimmerTab:
             is_writable = False
             
         if is_writable:
-            self.out_folder_var.set(self._folder_path)
+            self.out_folder_var.set(folder)
         else:
             self.out_folder_var.set(self.download_path_var.get())
             
-        self._load_file(full_path)
+        self._load_file(path)
 
     def _load_file(self, path):
         self._stop()
@@ -2153,13 +2250,11 @@ class MP3TrimmerTab:
         self.player.open(path)
         self.total_ms = self.player.get_length()
         self.file_label.config(text=f"🎵 {os.path.basename(path)}")
-        self.trim_canvas.delete("all")  # 清除舊進度條
+        self.trim_canvas.delete("all")  
         self.time_label.config(text=f"00:00 / {self._fmt(self.total_ms)}")
-        # 預設起終點
         self.start_time_str.set("0:00.00")
         self.end_time_str.set(self._fmt_time_str(self.total_ms / 1000))
         self._draw_trim_canvas()
-        # 建議輸出檔名
         base = os.path.splitext(os.path.basename(path))[0]
         self.out_entry.delete(0, tk.END)
         self.out_entry.insert(0, f"{base}_trim")
@@ -2182,13 +2277,13 @@ class MP3TrimmerTab:
             self.player.resume()
             self.play_btn.config(text="⏸ 暫停")
             self.is_paused = False
-            self._preview_mode = False # 切換回普通播放
+            self._preview_mode = False 
             self._start_update_loop()
         else:
             self.player.play()
             self.play_btn.config(text="⏸ 暫停")
             self.is_paused = False
-            self._preview_mode = False # 切換回普通播放
+            self._preview_mode = False 
             self._start_update_loop()
 
     def _stop(self):
@@ -2200,13 +2295,13 @@ class MP3TrimmerTab:
         if self.current_file:
             self.time_label.config(text=f"00:00 / {self._fmt(self.total_ms)}")
         if self._update_job:
-            self.parent.after_cancel(self._update_job)
+            self.after_cancel(self._update_job)
             self._update_job = None
         self._draw_trim_canvas()
 
     def _start_update_loop(self):
         if self._update_job:
-            self.parent.after_cancel(self._update_job)
+            self.after_cancel(self._update_job)
         self._do_update()
 
     def _do_update(self):
@@ -2215,12 +2310,10 @@ class MP3TrimmerTab:
             pos = self.player.get_position()
             self.time_label.config(text=f"{self._fmt(pos)} / {self._fmt(self.total_ms)}")
             self._draw_trim_canvas(pos)
-            # 試聽模式：到達終點時停止或循環
             if self._preview_mode:
                 end_ms = int(self._parse_time(self.end_time_str.get()) * 1000)
                 if pos >= end_ms:
                     if self._loop_var.get():
-                        # 循環：跳回起點重播
                         s_ms = int(self._parse_time(self.start_time_str.get()) * 1000)
                         self.player.seek(s_ms)
                     else:
@@ -2228,7 +2321,7 @@ class MP3TrimmerTab:
                         self._preview_mode = False
                         return
         if mode in ("playing", "paused"):
-            self._update_job = self.parent.after(200, self._do_update)
+            self._update_job = self.after(200, self._do_update)
             if self._preview_mode:
                 if mode == "playing":
                     self.preview_toggle_btn.config(text="⏸ 暫停")
@@ -2241,24 +2334,13 @@ class MP3TrimmerTab:
             self._preview_mode = False
             self._update_job = None
 
-    def _on_seek_drag(self, event=None):
-        """Canvas 拖曳時即時更新時間顯示"""
-        pass
-
-    def _on_seek_release(self, event):
-        self._seeking = False
-        # Canvas 釋放時已在 _canvas_release 處理
-
-    # === Canvas 進度條相關方法 ===
     def _ms_to_x(self, ms):
-        """ms 轉換為 Canvas x 座標"""
         w = self.trim_canvas.winfo_width()
         if self.total_ms <= 0 or w <= 0:
             return 0
         return int(ms / self.total_ms * w)
 
     def _x_to_ms(self, x):
-        """Canvas x 座標轉換為 ms"""
         w = self.trim_canvas.winfo_width()
         if self.total_ms <= 0 or w <= 0:
             return 0
@@ -2266,34 +2348,25 @@ class MP3TrimmerTab:
         return max(0, min(ms, self.total_ms))
 
     def _draw_trim_canvas(self, pos_ms=None):
-        """重繪 Canvas：背景灰、綠色裁剪區、起終點球、紅色播放指標"""
         c = self.trim_canvas
         w = c.winfo_width()
         h = c.winfo_height()
         if w <= 1:
             return
         c.delete("all")
-        # 背景
         c.create_rectangle(0, 0, w, h, fill="#d0d0d0", outline="")
         if self.total_ms > 0:
             s_sec = self._parse_time(self.start_time_str.get())
             e_sec = self._parse_time(self.end_time_str.get())
             xs = self._ms_to_x(int(s_sec * 1000))
             xe = self._ms_to_x(int(e_sec * 1000))
-            # 裁剪範圍（綠色）
             c.create_rectangle(xs, 0, xe, h, fill="#81C784", outline="")
-            
-            # 更新預計長度文字
             dur = abs(e_sec - s_sec)
             self.duration_label.config(text=f"預計長度：{self._fmt_time_str(dur)}")
-            
-            # 起點線（藍色）
             c.create_rectangle(xs - 2, 0, xs + 2, h, fill="#1976D2", outline="")
             c.create_oval(xs - 6, h // 2 - 6, xs + 6, h // 2 + 6, fill="#1976D2", outline="white", width=1)
-            # 終點線（橘色）
             c.create_rectangle(xe - 2, 0, xe + 2, h, fill="#E64A19", outline="")
             c.create_oval(xe - 6, h // 2 - 6, xe + 6, h // 2 + 6, fill="#E64A19", outline="white", width=1)
-            # 播放位置指標（紅色）
             if pos_ms is None:
                 pos_ms = self.player.get_position() if self.player._is_open else 0
             xp = self._ms_to_x(pos_ms)
@@ -2318,7 +2391,6 @@ class MP3TrimmerTab:
         self._seeking = False
 
     def _seek_relative(self, delta_ms):
-        """相對跳轉（delta_ms 可為正負）"""
         if not self.player._is_open:
             return
         pos = self.player.get_position()
@@ -2338,7 +2410,6 @@ class MP3TrimmerTab:
         self._draw_trim_canvas()
 
     def _parse_time(self, t_str):
-        """解析 1:23.45 或 83.45 為秒數"""
         try:
             if ":" in t_str:
                 parts = t_str.split(":")
@@ -2349,13 +2420,11 @@ class MP3TrimmerTab:
             return 0.0
 
     def _fmt_time_str(self, sec):
-        """將秒數格式化為 M:SS.ss"""
         m = int(sec) // 60
         s = sec % 60
         return f"{m}:{s:05.2f}"
 
     def _adjust(self, target, delta):
-        """微調起點或終點 ±0.1 秒"""
         if target == 'start':
             cur = self._parse_time(self.start_time_str.get())
             val = max(0.0, round(cur + delta, 2))
@@ -2367,25 +2436,18 @@ class MP3TrimmerTab:
         self._draw_trim_canvas()
 
     def _preview_section(self):
-        """從標記起點開始播放，到達終點時自動停止"""
         if not self.current_file:
             return
-            
         s_sec = self._parse_time(self.start_time_str.get())
         e_sec = self._parse_time(self.end_time_str.get())
-        
-        # 自動對調
         if s_sec > e_sec:
             s_sec, e_sec = e_sec, s_sec
             self.start_time_str.set(self._fmt_time_str(s_sec))
             self.end_time_str.set(self._fmt_time_str(e_sec))
-
         s_ms = int(s_sec * 1000)
         e_ms = int(e_sec * 1000)
-        
         if s_ms >= e_ms:
             return
-            
         self._preview_mode = True
         self.player.seek(s_ms)
         self.player.play()
@@ -2394,10 +2456,8 @@ class MP3TrimmerTab:
         self._start_update_loop()
 
     def _preview_toggle(self):
-        """在當前位置切換 播放/暫停，且受限於標記範圍"""
         if not self.current_file:
             return
-            
         mode = self.player.get_mode()
         if mode == "playing":
             self.player.pause()
@@ -2407,31 +2467,16 @@ class MP3TrimmerTab:
             self.player.resume()
             self.play_btn.config(text="⏸ 暫停")
             self.preview_toggle_btn.config(text="⏸ 暫停")
-            self._preview_mode = True # 確保是在預覽模式
+            self._preview_mode = True 
             self._start_update_loop()
-        else:
-            # 如果目前是停止狀態，從起點播放
-            self._preview_section()
-
-    def _update_displays(self):
-        self._draw_trim_canvas()
 
     def _do_trim(self):
         if not self.current_file:
-            messagebox.showwarning("警告", "請先選擇一個 MP3 檔案。")
             return
         s = self._parse_time(self.start_time_str.get())
         e = self._parse_time(self.end_time_str.get())
-        
-        # 自動對調
-        if s > e:
-            s, e = e, s
-            self.start_time_str.set(self._fmt_time_str(s))
-            self.end_time_str.set(self._fmt_time_str(e))
-            self._draw_trim_canvas()
-
         if s >= e:
-            messagebox.showerror("錯誤", "無效的裁剪範圍。")
+            messagebox.showerror("錯誤", "起點必須小於終點。")
             return
         base_out_name = self.out_entry.get().strip()
         if not base_out_name:
@@ -2439,13 +2484,14 @@ class MP3TrimmerTab:
             return
 
         out_name = base_out_name
-        out_path = os.path.join(self._folder_path, out_name + ".mp3")
+        out_folder = self.out_folder_var.get() or self.download_path_var.get()
+        out_path = os.path.join(out_folder, out_name + ".mp3")
         counter = 1
         while os.path.exists(out_path):
             out_name = f"{base_out_name}({counter})"
-            out_path = os.path.join(self._folder_path, out_name + ".mp3")
+            out_path = os.path.join(out_folder, out_name + ".mp3")
             counter += 1
-        # 暫停播放以釋放檔案鎖定
+            
         if self.player.get_mode() == "playing":
             self.player.pause()
         self.trim_btn.config(state="disabled")
@@ -2455,7 +2501,7 @@ class MP3TrimmerTab:
     def _run_ffmpeg(self, in_path, out_path, start_sec, end_sec):
         try:
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg_path, "-y",
                 "-i", in_path,
                 "-ss", str(start_sec),
                 "-to", str(end_sec),
@@ -2464,1182 +2510,66 @@ class MP3TrimmerTab:
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             if result.returncode == 0:
-                self.parent.after(0, lambda: self.trim_status.config(
+                self.after(0, lambda: self.trim_status.config(
                     text=f"✅ 已成功儲存：{os.path.basename(out_path)}", fg="green"))
-                self.parent.after(0, self._refresh_list)
+                self.after(0, self.controller._refresh_list)
             else:
                 err = result.stderr[-300:] if result.stderr else "未知錯誤"
-                self.parent.after(0, lambda: self.trim_status.config(
+                self.after(0, lambda: self.trim_status.config(
                     text=f"❌ 裁剪失敗：{err}", fg="red"))
         except FileNotFoundError:
-            self.parent.after(0, lambda: messagebox.showerror(
+            self.after(0, lambda: messagebox.showerror(
                 "ffmpeg 找不到",
-                "找不到 ffmpeg 執行檔。\n請確認 ffmpeg 已安裝並加入系統 PATH。"))
-            self.parent.after(0, lambda: self.trim_status.config(text="", fg="red"))
+                "找不到 ffmpeg 執行檔。\n請確認 ffmpeg 已安裝。"))
+            self.after(0, lambda: self.trim_status.config(text="", fg="red"))
         except Exception as ex:
-            self.parent.after(0, lambda: self.trim_status.config(
-                text=f"❌ 錯誤：{ex}", fg="red"))
+            err_msg = str(ex)
+            self.after(0, lambda: self.trim_status.config(
+                text=f"❌ 錯誤：{err_msg}", fg="red"))
         finally:
-            self.parent.after(0, lambda: self.trim_btn.config(state="normal"))
+            self.after(0, lambda: self.trim_btn.config(state="normal"))
 
     @staticmethod
     def _fmt(ms):
-        """將毫秒格式化為 MM:SS"""
         s = int(ms) // 1000
         return f"{s // 60:02d}:{s % 60:02d}"
 
     @staticmethod
-    def _fmt_sec(sec):
-        """將秒數格式化為 X分Y.Z秒"""
-        sec = float(sec)
+    def _fmt_time_str(sec):
         m = int(sec) // 60
         s = sec % 60
-        return f"{m}分{s:05.2f}秒"
-
-
-# ===========================================================================
-# VideoTrimmerTab：影片裁剪工具的完整 UI 類別 (支援 MP4/MKV)
-# ===========================================================================
-class VideoTrimmerTab:
-    def __init__(self, parent, download_path_var):
-        self.parent = parent
-        self.download_path_var = download_path_var
-        self.player = MCIPlayer(alias="cyt_video_player")
-        self.current_file = None
-        self.total_ms = 0
-        self.is_playing = False
-        self.is_paused = False
-        self.start_time_str = tk.StringVar(value="0:00")
-        self.end_time_str = tk.StringVar(value="0:00")
-        self._update_job = None
-        self._seeking = False
-        self._preview_mode = False
-        self._loop_var = tk.BooleanVar(value=False)
-        self._build_ui()
-
-    def _build_ui(self):
-        # === 左側：檔案列表區 ===
-        left_frame = tk.Frame(self.parent, width=210)
-        left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
-        left_frame.pack_propagate(False)
-
-        tk.Label(left_frame, text="影片檔案列表", font=("Microsoft JhengHei", 11, "bold")).pack(anchor="w")
-
-        folder_frame = tk.Frame(left_frame)
-        folder_frame.pack(fill="x", pady=3)
-        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Microsoft JhengHei", 8))
-        self.folder_entry.pack(side="left", fill="x", expand=True)
-        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
-
-        self.file_listbox = tk.Listbox(left_frame, font=("Microsoft JhengHei", 9), selectmode="single", activestyle="dotbox")
-        self.file_listbox.pack(fill="both", expand=True, pady=5)
-        self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
-
-        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Microsoft JhengHei", 9)).pack(fill="x")
-
-        # === 右側：控制區 ===
-        right_frame = tk.Frame(self.parent)
-        right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
-
-        # 影片播放容器
-        self.video_container = tk.Frame(right_frame, bg="black", height=280)
-        self.video_container.pack(fill="x", pady=(0, 5))
-        self.video_container.pack_propagate(False)
-        self.video_label = tk.Label(self.video_container, text="請從左側選取影片進行預覽", fg="white", bg="black", font=("Microsoft JhengHei", 10))
-        self.video_label.place(relx=0.5, rely=0.5, anchor="center")
-
-        # 播放控制按鈕
-        ctrl_frame = tk.Frame(right_frame)
-        ctrl_frame.pack(anchor="w", pady=3)
-        tk.Button(ctrl_frame, text="⏮ -5s", command=lambda: self._seek_relative(-5000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
-        tk.Button(ctrl_frame, text="◀ -1s", command=lambda: self._seek_relative(-1000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
-        tk.Button(ctrl_frame, text="⏪ -0.1s", command=lambda: self._seek_relative(-100), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=1)
-        
-        self.play_btn = tk.Button(ctrl_frame, text="▶ 播放", command=self._toggle_play,
-                                  font=("Microsoft JhengHei", 11, "bold"), bg="#2196F3", fg="white", width=8, state="disabled")
-        self.play_btn.pack(side="left", padx=4)
-        
-        tk.Button(ctrl_frame, text="+0.1s ⏩", command=lambda: self._seek_relative(100), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=1)
-        tk.Button(ctrl_frame, text="+1s ▶", command=lambda: self._seek_relative(1000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
-        tk.Button(ctrl_frame, text="+5s ⏭", command=lambda: self._seek_relative(5000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
-        
-        self.time_label = tk.Label(ctrl_frame, text="00:00 / 00:00", font=("Microsoft JhengHei", 11), fg="#333")
-        self.time_label.pack(side="left", padx=10)
-
-        # Canvas 進度條
-        canvas_outer = tk.Frame(right_frame, bg="#333", pady=1)
-        canvas_outer.pack(fill="x", pady=(4, 0))
-        self.trim_canvas = tk.Canvas(canvas_outer, height=20, bg="#e0e0e0", highlightthickness=0, cursor="hand2")
-        self.trim_canvas.pack(fill="both", expand=True)
-        self.trim_canvas.bind("<ButtonPress-1>", self._canvas_click)
-        self.trim_canvas.bind("<B1-Motion>", self._canvas_drag)
-        self.trim_canvas.bind("<Configure>", lambda e: self._draw_trim_canvas())
-
-        # 影片裁剪設定區
-        trim_lf = tk.LabelFrame(right_frame, text="✂️ 影片裁剪設定", font=("Microsoft JhengHei", 10, "bold"), padx=10, pady=6)
-        trim_lf.pack(fill="x", pady=5)
-
-        # 播放與循環播放
-        row0 = tk.Frame(trim_lf)
-        row0.pack(fill="x", pady=(2, 5))
-        self.preview_btn = tk.Button(row0, text="▶ 播放標記區段", command=self._preview_section,
-                                     font=("Microsoft JhengHei", 10, "bold"), bg="#7B1FA2", fg="white", state="disabled", width=14)
-        self.preview_btn.pack(side="left", padx=(0, 5))
-        
-        self.preview_toggle_btn = tk.Button(row0, text="▶ 播放 / 暫停", command=self._preview_toggle,
-                                            font=("Microsoft JhengHei", 10, "bold"), bg="#673AB7", fg="white", state="disabled", width=12)
-        self.preview_toggle_btn.pack(side="left", padx=5)
-        
-        tk.Checkbutton(row0, text="🔁 循環播放", variable=self._loop_var,
-                       font=("Microsoft JhengHei", 10), fg="#4A148C").pack(side="left")
-        self.duration_label = tk.Label(row0, text="預計長度：0秒", font=("Microsoft JhengHei", 10, "bold"), fg="#E91E63")
-        self.duration_label.pack(side="right", padx=10)
-
-        # 起點
-        row1 = tk.Frame(trim_lf)
-        row1.pack(fill="x", pady=2)
-        tk.Label(row1, text="起點：", font=("Microsoft JhengHei", 10), width=6).pack(side="left")
-        tk.Entry(row1, textvariable=self.start_time_str, width=12, font=("Microsoft JhengHei", 10)).pack(side="left", padx=5)
-        tk.Button(row1, text="📍 標記目前位置", command=self._mark_start, font=("Microsoft JhengHei", 9), bg="#1976D2", fg="white").pack(side="left")
-
-        # 終點
-        row2 = tk.Frame(trim_lf)
-        row2.pack(fill="x", pady=2)
-        tk.Label(row2, text="終點：", font=("Microsoft JhengHei", 10), width=6).pack(side="left")
-        tk.Entry(row2, textvariable=self.end_time_str, width=12, font=("Microsoft JhengHei", 10)).pack(side="left", padx=5)
-        tk.Button(row2, text="📍 標記目前位置", command=self._mark_end, font=("Microsoft JhengHei", 9), bg="#E64A19", fg="white").pack(side="left")
-        
-        # 儲存資料夾 Row
-        self.out_folder_row = tk.Frame(right_frame)
-        self.out_folder_row.pack(fill="x", pady=5)
-        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 10, "bold"), width=12, anchor="w").pack(side="left")
-        self.out_folder_var = tk.StringVar()
-        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Microsoft JhengHei", 10), state="readonly")
-        self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left")
-
-        # 輸出設定
-        out_row = tk.Frame(right_frame)
-        out_row.pack(fill="x", pady=5)
-        tk.Label(out_row, text="儲存檔名：", font=("Microsoft JhengHei", 10)).pack(side="left")
-        self.out_entry = tk.Entry(out_row, font=("Microsoft JhengHei", 10))
-        self.out_entry.pack(side="left", fill="x", expand=True, padx=5)
-        self.ext_label = tk.Label(out_row, text=".mp4", font=("Microsoft JhengHei", 10))
-        self.ext_label.pack(side="left")
-
-        # 執行按鈕
-        self.trim_btn = tk.Button(right_frame, text="🎬 執行影片裁剪 (無損快速模式)", command=self._do_trim,
-                                  font=("Microsoft JhengHei", 12, "bold"), bg="#F44336", fg="white", height=2, state="disabled")
-        self.trim_btn.pack(fill="x", pady=5)
-
-        self.extract_btn = tk.Button(right_frame, text="🎵 影音分離 (一鍵提取高品質音軌)", command=self._do_extract_audio,
-                                     font=("Microsoft JhengHei", 11, "bold"), bg="#FF9800", fg="white", height=2, state="disabled")
-        self.extract_btn.pack(fill="x", pady=2)
-        
-        self.trim_status = tk.Label(right_frame, text="", font=("Microsoft JhengHei", 9), fg="green")
-        self.trim_status.pack()
-
-        self._refresh_list()
-
-    def _browse_folder(self):
-        folder = filedialog.askdirectory(initialdir=self.download_path_var.get())
-        if folder:
-            self._folder_path = folder
-            self._update_folder_entry(folder)
-            self._refresh_list()
-
-    def _update_folder_entry(self, path):
-        self.folder_entry.config(state="normal")
-        self.folder_entry.delete(0, tk.END)
-        self.folder_entry.insert(0, path)
-        self.folder_entry.config(state="readonly")
-
-    def _browse_out_folder(self):
-        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
-        folder = filedialog.askdirectory(initialdir=initial_dir)
-        if folder:
-            is_writable = True
-            test_file = os.path.join(folder, ".write_test")
-            try:
-                with open(test_file, "w") as f:
-                    pass
-                os.remove(test_file)
-            except Exception:
-                is_writable = False
-            
-            if not is_writable:
-                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
-            else:
-                self.out_folder_var.set(folder)
-
-    def _browse_out_folder(self):
-        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
-        folder = filedialog.askdirectory(initialdir=initial_dir)
-        if folder:
-            is_writable = True
-            test_file = os.path.join(folder, ".write_test")
-            try:
-                with open(test_file, "w") as f:
-                    pass
-                os.remove(test_file)
-            except Exception:
-                is_writable = False
-            
-            if not is_writable:
-                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
-            else:
-                self.out_folder_var.set(folder)
-
-    def _refresh_list(self):
-        folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
-        self._folder_path = folder
-        self._update_folder_entry(folder)
-        self.file_listbox.delete(0, tk.END)
-        if not folder or not os.path.exists(folder): return
-        files = sorted([f for f in os.listdir(folder) if f.lower().endswith(('.mp4', '.mkv'))])
-        for f in files: self.file_listbox.insert(tk.END, f)
-
-    def _on_file_select(self, event):
-        sel = self.file_listbox.curselection()
-        if not sel: return
-        filename = self.file_listbox.get(sel[0])
-        full_path = os.path.join(self._folder_path, filename)
-        
-        # 智慧唯讀性與可寫性探針檢測，決定預設儲存路徑
-        is_writable = True
-        test_file = os.path.join(self._folder_path, ".write_test")
-        try:
-            with open(test_file, "w") as f:
-                pass
-            os.remove(test_file)
-        except Exception:
-            is_writable = False
-            
-        if is_writable:
-            self.out_folder_var.set(self._folder_path)
-        else:
-            self.out_folder_var.set(self.download_path_var.get())
-            
-        self._load_video(full_path)
-
-    def _load_video(self, path):
-        self._stop()
-        self.current_file = path
-        # 使用 MCI 播放器
-        short_path = self.player._get_short_path(path)
-        p = f'"{short_path}"' if short_path else f'"{path}"'
-        
-        # 開啟影片並嵌入視窗
-        hwnd = self.video_container.winfo_id()
-        self.player._send(f'open {p} type mpegvideo alias {self.player._alias} style child parent {hwnd}')
-        self.player._send(f'set {self.player._alias} time format milliseconds')
-        self.player._is_open = True
-        
-        self.total_ms = self.player.get_length()
-        self.time_label.config(text=f"00:00 / {self._fmt(self.total_ms)}")
-        self.start_time_str.set("0:00.00")
-        self.end_time_str.set(self._fmt_time_str(self.total_ms / 1000))
-        
-        # 調整影片顯示區域
-        w, h = self.video_container.winfo_width(), self.video_container.winfo_height()
-        self.player._send(f'put {self.player._alias} window at 0 0 {w} {h}')
-        
-        base, ext = os.path.splitext(os.path.basename(path))
-        self.out_entry.delete(0, tk.END)
-        self.out_entry.insert(0, f"{base}_clip")
-        self.ext_label.config(text=ext)
-        self.play_btn.config(state="normal")
-        self.preview_btn.config(state="normal")
-        self.preview_toggle_btn.config(state="normal")
-        self.trim_btn.config(state="normal")
-        self.extract_btn.config(state="normal")
-        self.video_label.place_forget()
-        self._draw_trim_canvas()
-
-    def _toggle_play(self):
-        if not self.current_file: return
-        mode = self.player.get_mode()
-        if mode == "playing":
-            self.player.pause()
-            self.play_btn.config(text="▶ 播放")
-        else:
-            self.player.play()
-            self.play_btn.config(text="⏸ 暫停")
-            self._preview_mode = False # 一般播放模式
-            self._start_update_loop()
-
-    def _stop(self):
-        self.player.close()
-        self.play_btn.config(text="▶ 播放")
-        self.preview_btn.config(text="▶ 播放標記區段")
-        self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
-        if self._update_job: self.parent.after_cancel(self._update_job)
-        self.video_label.place(relx=0.5, rely=0.5, anchor="center")
-
-    def _start_update_loop(self):
-        if self._update_job: self.parent.after_cancel(self._update_job)
-        self._do_update()
-
-    def _do_update(self):
-        if self.player._is_open:
-            mode = self.player.get_mode()
-            pos = self.player.get_position()
-            self.time_label.config(text=f"{self._fmt(pos)} / {self._fmt(self.total_ms)}")
-            self._draw_trim_canvas(pos)
-            
-            # 試聽模式邏輯
-            if self._preview_mode:
-                if mode == "playing":
-                    self.preview_toggle_btn.config(text="⏸ 暫停")
-                else:
-                    self.preview_toggle_btn.config(text="▶ 播放")
-                
-                e_ms = int(self._parse_time(self.end_time_str.get()) * 1000)
-                if pos >= e_ms:
-                    if self._loop_var.get():
-                        s_ms = int(self._parse_time(self.start_time_str.get()) * 1000)
-                        self.player.seek(s_ms)
-                        # 強制重新整理畫面
-                        self.player._send(f'update {self.player._alias}')
-                    else:
-                        self.player.pause()
-                        self.play_btn.config(text="▶ 播放")
-                        self.preview_btn.config(text="▶ 播放標記區段")
-                        self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
-                        self._preview_mode = False
-                        return
-
-            if self.player.get_mode() == "playing":
-                self._update_job = self.parent.after(200, self._do_update)
-            else:
-                self.play_btn.config(text="▶ 播放")
-                self.preview_btn.config(text="▶ 播放標記區段")
-                self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
-                self._preview_mode = False
-                self._update_job = None
-
-    def _preview_section(self):
-        if not self.player._is_open: return
-        
-        # 全新試聽：從起點開始
-        s = self._parse_time(self.start_time_str.get())
-        self.player.seek(int(s * 1000))
-        self._preview_mode = True
-        self.player.play()
-        self.play_btn.config(text="⏸ 暫停")
-        self.preview_toggle_btn.config(text="⏸ 暫停")
-        self._start_update_loop()
-        # 強制刷新畫面
-        self.player._send(f'update {self.player._alias}')
-
-    def _preview_toggle(self):
-        """在當前位置切換 播放/暫停，且受限於標記範圍"""
-        if not self.player._is_open: return
-        
-        mode = self.player.get_mode()
-        if mode == "playing":
-            self.player.pause()
-            self.play_btn.config(text="▶ 播放")
-            self.preview_toggle_btn.config(text="▶ 播放")
-        elif mode == "paused":
-            self.player.play()
-            self.play_btn.config(text="⏸ 暫停")
-            self.preview_toggle_btn.config(text="⏸ 暫停")
-            self._preview_mode = True # 確保是在預覽模式
-            self._start_update_loop()
-        else:
-            # 如果目前是停止狀態，從起點播放
-            self._preview_section()
-
-    def _seek_relative(self, delta_ms):
-        if not self.player._is_open: return
-        pos = self.player.get_position()
-        new_pos = max(0, min(pos + delta_ms, self.total_ms))
-        self.player.seek(new_pos)
-        
-        # 強制重新整理畫面 (MCI 在暫停時 Seek 可能不會更新視窗，需要 update 或 put)
-        if self.player.get_mode() != "playing":
-            w, h = self.video_container.winfo_width(), self.video_container.winfo_height()
-            self.player._send(f'put {self.player._alias} window at 0 0 {w} {h}')
-            self.player._send(f'update {self.player._alias}')
-            
-        # 即時同步 UI
-        self.time_label.config(text=f"{self._fmt(new_pos)} / {self._fmt(self.total_ms)}")
-        self._draw_trim_canvas(new_pos)
-
-    def _mark_start(self):
-        pos = self.player.get_position() if self.player._is_open else 0
-        self.start_time_str.set(self._fmt_time_str(pos / 1000))
-        self._draw_trim_canvas()
-
-    def _mark_end(self):
-        pos = self.player.get_position() if self.player._is_open else self.total_ms
-        self.end_time_str.set(self._fmt_time_str(pos / 1000))
-        self._draw_trim_canvas()
-
-    def _draw_trim_canvas(self, pos_ms=None):
-        c = self.trim_canvas
-        w, h = c.winfo_width(), c.winfo_height()
-        if w <= 1: return
-        c.delete("all")
-        c.create_rectangle(0, 0, w, h, fill="#d0d0d0", outline="")
-        if self.total_ms > 0:
-            s = self._parse_time(self.start_time_str.get())
-            e = self._parse_time(self.end_time_str.get())
-            
-            # 更新預計長度文字
-            dur = abs(e - s)
-            self.duration_label.config(text=f"預計長度：{self._fmt_time_str(dur)}")
-            
-            xs, xe = int(s*1000/self.total_ms*w), int(e*1000/self.total_ms*w)
-            c.create_rectangle(xs, 0, xe, h, fill="#81C784", outline="")
-            if pos_ms is None: pos_ms = self.player.get_position()
-            xp = int(pos_ms/self.total_ms*w)
-            c.create_rectangle(xp-1, 0, xp+1, h, fill="red", outline="")
-
-    def _canvas_click(self, event):
-        if self.total_ms <= 0: return
-        self._seeking = True
-        w = self.trim_canvas.winfo_width()
-        ms = int(event.x / w * self.total_ms)
-        self.player.seek(ms)
-        # 暫停時強制更新畫面
-        if self.player.get_mode() != "playing":
-            w_v, h_v = self.video_container.winfo_width(), self.video_container.winfo_height()
-            self.player._send(f'put {self.player._alias} window at 0 0 {w_v} {h_v}')
-            self.player._send(f'update {self.player._alias}')
-            
-        self.time_label.config(text=f"{self._fmt(ms)} / {self._fmt(self.total_ms)}")
-        self._draw_trim_canvas(ms)
-
-    def _canvas_drag(self, event):
-        self._canvas_click(event)
-
-    def _do_trim(self):
-        if not self.current_file: return
-        s, e = self._parse_time(self.start_time_str.get()), self._parse_time(self.end_time_str.get())
-        if s >= e: 
-            messagebox.showerror("錯誤", "起點必須小於終點。")
-            return
-        out_name = self.out_entry.get().strip() + self.ext_label.cget("text")
-        target_folder = self.out_folder_var.get() or self.download_path_var.get()
-        os.makedirs(target_folder, exist_ok=True)
-        out_path = os.path.join(target_folder, out_name)
-        
-        self.trim_btn.config(state="disabled")
-        self.trim_status.config(text="影片裁剪中（無損模式速度極快）...", fg="blue")
-        threading.Thread(target=self._run_ffmpeg, args=(self.current_file, out_path, s, e), daemon=True).start()
-
-    def _run_ffmpeg(self, in_path, out_path, start, end):
-        try:
-            # 使用 -ss 在 -i 前面可實現快速跳轉，搭配 -c copy 實現無損剪輯
-            cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", in_path, "-to", str(end-start), "-c", "copy", out_path]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode == 0:
-                self.parent.after(0, lambda: self.trim_status.config(text=f"✅ 裁剪成功：{os.path.basename(out_path)}", fg="green"))
-                self.parent.after(0, self._refresh_list)
-            else:
-                self.parent.after(0, lambda: self.trim_status.config(text="❌ 裁剪失敗", fg="red"))
-        except Exception as ex:
-            self.parent.after(0, lambda: self.trim_status.config(text=f"❌ 錯誤：{ex}", fg="red"))
-        finally:
-            self.parent.after(0, lambda: self.trim_btn.config(state="normal"))
-
-    def _fmt(self, ms):
-        s = int(ms) // 1000
-        return f"{s // 60:02d}:{s % 60:02d}"
-
-    def _fmt_time_str(self, sec):
-        return f"{int(sec)//60}:{sec%60:05.2f}"
-
-    def _parse_time(self, t_str):
-        try:
-            if ":" in t_str:
-                p = t_str.split(":")
-                return float(p[0])*60 + float(p[1])
-            return float(t_str)
-        except: return 0.0
-
-    def _do_extract_audio(self):
-        if not self.current_file: return
-        # 彈出小視窗選擇格式
-        dialog = tk.Toplevel(self.parent)
-        dialog.title("選擇音訊提取格式")
-        dialog.geometry("320x150")
-        dialog.resizable(False, False)
-        dialog.transient(self.parent)
-        dialog.grab_set()
-        
-        # 居中顯示
-        dialog.update_idletasks()
-        w = dialog.winfo_width()
-        h = dialog.winfo_height()
-        x = self.parent.winfo_rootx() + (self.parent.winfo_width() - w) // 2
-        y = self.parent.winfo_rooty() + (self.parent.winfo_height() - h) // 2
-        dialog.geometry(f"+{x}+{y}")
-        
-        tk.Label(dialog, text="請選擇要提取的音訊格式：", font=("Microsoft JhengHei", 10)).pack(pady=15)
-        
-        btn_frame = tk.Frame(dialog)
-        btn_frame.pack(fill="x", padx=10)
-        
-        def select_format(fmt):
-            dialog.destroy()
-            self._start_audio_extraction(fmt)
-            
-        tk.Button(btn_frame, text="高品質 MP3 (320k)", bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 9, "bold"),
-                   command=lambda: select_format("mp3")).pack(side="left", expand=True, fill="x", padx=5)
-        tk.Button(btn_frame, text="無損 WAV 音軌", bg="#2196F3", fg="white", font=("Microsoft JhengHei", 9, "bold"),
-                   command=lambda: select_format("wav")).pack(side="left", expand=True, fill="x", padx=5)
-
-    def _start_audio_extraction(self, fmt):
-        base, _ = os.path.splitext(os.path.basename(self.current_file))
-        target_folder = self.out_folder_var.get() or self.download_path_var.get()
-        os.makedirs(target_folder, exist_ok=True)
-        counter = 1
-        out_filename = f"{base}.{fmt}"
-        out_path = os.path.join(target_folder, out_filename)
-        while os.path.exists(out_path):
-            out_filename = f"{base}_{counter}.{fmt}"
-            out_path = os.path.join(folder, out_filename)
-            counter += 1
-            
-        self.extract_btn.config(state="disabled")
-        self.trim_status.config(text=f"正在提取高品質 {fmt.upper()} 音軌...", fg="blue")
-        threading.Thread(target=self._run_ffmpeg_extract, args=(self.current_file, out_path, fmt), daemon=True).start()
-
-    def _run_ffmpeg_extract(self, in_path, out_path, fmt):
-        try:
-            if fmt == "mp3":
-                cmd = ["ffmpeg", "-y", "-i", in_path, "-vn", "-acodec", "libmp3lame", "-ab", "320k", out_path]
-            else: # wav
-                cmd = ["ffmpeg", "-y", "-i", in_path, "-vn", out_path]
-                
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode == 0:
-                self.parent.after(0, lambda: self.trim_status.config(text=f"✅ 影音分離成功：{os.path.basename(out_path)}", fg="green"))
-                self.parent.after(0, self._refresh_list)
-            else:
-                self.parent.after(0, lambda: self.trim_status.config(text="❌ 提取失敗", fg="red"))
-        except Exception as ex:
-            self.parent.after(0, lambda: self.trim_status.config(text=f"❌ 錯誤：{ex}", fg="red"))
-        finally:
-            self.parent.after(0, lambda: self.extract_btn.config(state="normal"))
-
-
-# ===========================================================================
-# VideoConverterTab：影音轉檔工具的完整 UI 類別
-# ===========================================================================
-class VideoConverterTab:
-    def __init__(self, parent, download_path_var):
-        self.parent = parent
-        self.download_path_var = download_path_var
-        self.current_file = None
-        self._folder_path = ""
-        
-        self.target_format = tk.StringVar(value="MP4")
-        self.scale_choice = tk.StringVar(value="保持原解析度")
-        self.speed_choice = tk.StringVar(value="預設速度 (Medium)")
-        
-        self._build_ui()
-
-    def _build_ui(self):
-        # === 左側：檔案列表區 ===
-        left_frame = tk.Frame(self.parent, width=220)
-        left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
-        left_frame.pack_propagate(False)
-
-        tk.Label(left_frame, text="待轉檔影音列表", font=("Microsoft JhengHei", 11, "bold")).pack(anchor="w")
-
-        folder_frame = tk.Frame(left_frame)
-        folder_frame.pack(fill="x", pady=3)
-        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Microsoft JhengHei", 8))
-        self.folder_entry.pack(side="left", fill="x", expand=True)
-        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
-
-        self.file_listbox = tk.Listbox(left_frame, font=("Microsoft JhengHei", 9), selectmode="single", activestyle="dotbox")
-        self.file_listbox.pack(fill="both", expand=True, pady=5)
-        self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
-
-        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Microsoft JhengHei", 9)).pack(fill="x")
-
-        # === 右側：控制區 ===
-        right_frame = tk.Frame(self.parent)
-        right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
-
-        # 選取影片資訊
-        self.info_lf = tk.LabelFrame(right_frame, text="🎬 已選取影音檔案", font=("Microsoft JhengHei", 10, "bold"), padx=15, pady=10)
-        self.info_lf.pack(fill="x", pady=(0, 10))
-        self.info_label = tk.Label(self.info_lf, text="請先從左側選擇要轉換的影片或音訊檔案", font=("Microsoft JhengHei", 10), fg="gray", justify="left", anchor="w", wraplength=500)
-        self.info_label.pack(fill="x")
-        
-        # DVD VOB 合併勾選框 (預設隱藏，檢測到連續 VOB 時才 pack)
-        self.merge_vobs_var = tk.BooleanVar(value=False)
-        self.merge_vobs_chk = tk.Checkbutton(self.info_lf, text="偵測到連續的 DVD VOB 檔案，是否一鍵無縫合併轉檔？", 
-                                             variable=self.merge_vobs_var, font=("Microsoft JhengHei", 9, "bold"), fg="#FF5722",
-                                             anchor="w", justify="left", wraplength=480)
-
-        # 轉檔參數設定
-        params_lf = tk.LabelFrame(right_frame, text="⚙️ 轉檔參數與畫質壓縮設定", font=("Microsoft JhengHei", 10, "bold"), padx=15, pady=15)
-        params_lf.pack(fill="x", pady=5)
-
-        # 目標格式
-        row1 = tk.Frame(params_lf)
-        row1.pack(fill="x", pady=5)
-        tk.Label(row1, text="目標輸出格式：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w").pack(side="left")
-        self.format_combo = ttk.Combobox(row1, values=["MP4 (相容性最高)", "MKV (多軌道支援)", "MP3 (高品質音軌)", "WAV (無損音軌)"], state="readonly", font=("Microsoft JhengHei", 9))
-        self.format_combo.set("MP4 (相容性最高)")
-        self.format_combo.pack(side="left", fill="x", expand=True)
-        self.format_combo.bind("<<ComboboxSelected>>", self._on_format_combo_change)
-
-        # 儲存位置設定 Row
-        self.out_folder_row = tk.Frame(params_lf)
-        self.out_folder_row.pack(fill="x", pady=5)
-        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w").pack(side="left")
-        self.out_folder_var = tk.StringVar()
-        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Microsoft JhengHei", 10), state="readonly")
-        self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left")
-
-        # 解析度降低
-        self.row2 = tk.Frame(params_lf)
-        self.row2.pack(fill="x", pady=5)
-        self.scale_label = tk.Label(self.row2, text="畫質壓縮/解析度：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w")
-        self.scale_label.pack(side="left")
-        self.scale_combo = ttk.Combobox(self.row2, values=["保持原解析度", "1080p (1920x1080)", "720p (1280x720) [推薦，體積減60%]", "480p (854x480) [快速壓縮]"], state="readonly", font=("Microsoft JhengHei", 9))
-        self.scale_combo.set("保持原解析度")
-        self.scale_combo.pack(side="left", fill="x", expand=True)
-
-        # 轉檔速度 (CPU Preset)
-        self.row3 = tk.Frame(params_lf)
-        self.row3.pack(fill="x", pady=5)
-        self.speed_label = tk.Label(self.row3, text="轉檔編碼速度：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w")
-        self.speed_label.pack(side="left")
-        self.speed_combo = ttk.Combobox(self.row3, values=["極速模式 (Veryfast) [速度極快，體積稍大]", "預設速度 (Medium)", "高品質模式 (Slow) [壓縮率最高，較慢]"], state="readonly", font=("Microsoft JhengHei", 9))
-        self.speed_combo.set("預設速度 (Medium)")
-        self.speed_combo.pack(side="left", fill="x", expand=True)
-
-        # 外掛字幕設定
-        self.sub_row = tk.Frame(params_lf)
-        self.sub_row.pack(fill="x", pady=5)
-        
-        self.merge_sub_var = tk.BooleanVar(value=False)
-        self.sub_chk = tk.Checkbutton(self.sub_row, text="🎬 合併外掛字幕 (.srt)：", variable=self.merge_sub_var, font=("Microsoft JhengHei", 10, "bold"), command=self._on_sub_chk_change)
-        self.sub_chk.pack(side="left")
-        
-        self.sub_path_var = tk.StringVar()
-        self.sub_entry = tk.Entry(self.sub_row, textvariable=self.sub_path_var, state="readonly", font=("Microsoft JhengHei", 9), width=25)
-        self.sub_entry.pack(side="left", fill="x", expand=True, padx=5)
-        
-        self.sub_btn = tk.Button(self.sub_row, text="選擇 SRT", command=self._browse_srt, font=("Microsoft JhengHei", 8), state="disabled")
-        self.sub_btn.pack(side="left", padx=2)
-
-        # 轉檔說明提示
-        hint_lbl = tk.Label(params_lf, text="💡 提示：降低解析度（如將 1080p 轉為 720p）能大幅縮小影片檔案體積，非常適合在手機儲存與分享傳送。", font=("Microsoft JhengHei", 9), fg="#666", justify="left", wraplength=500)
-        hint_lbl.pack(fill="x", pady=(10, 0))
-
-        # 執行轉檔大按鈕
-        self.convert_btn = tk.Button(right_frame, text="🚀 開始影音轉檔與畫質壓縮", command=self._do_convert, font=("Microsoft JhengHei", 12, "bold"), bg="#4CAF50", fg="white", height=2, state="disabled")
-        self.convert_btn.pack(fill="x", pady=15)
-
-        # 狀態與進度控制區
-        self.progress_frame = tk.Frame(right_frame)
-        self.progress_frame.pack(fill="x", pady=5)
-
-        self.status_label = tk.Label(self.progress_frame, text="", font=("Microsoft JhengHei", 10, "bold"), fg="blue")
-        self.status_label.pack(pady=2)
-
-        self.progress_bar = ttk.Progressbar(self.progress_frame, orient="horizontal", mode="determinate")
-        self.progress_bar.pack(fill="x", pady=5)
-        self.progress_bar.pack_forget()
-
-        self.progress_label = tk.Label(self.progress_frame, text="", font=("Microsoft JhengHei", 9), fg="#555")
-        self.progress_label.pack(pady=2)
-        self.progress_label.pack_forget()
-
-        self._refresh_list()
-
-    def _browse_folder(self):
-        folder = filedialog.askdirectory(initialdir=self.download_path_var.get())
-        if folder:
-            self._folder_path = folder
-            self._update_folder_entry(folder)
-            self._refresh_list()
-
-    def _update_folder_entry(self, path):
-        self.folder_entry.config(state="normal")
-        self.folder_entry.delete(0, tk.END)
-        self.folder_entry.insert(0, path)
-        self.folder_entry.config(state="readonly")
-
-    def _browse_out_folder(self):
-        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
-        folder = filedialog.askdirectory(initialdir=initial_dir)
-        if folder:
-            is_writable = True
-            test_file = os.path.join(folder, ".write_test")
-            try:
-                with open(test_file, "w") as f:
-                    pass
-                os.remove(test_file)
-            except Exception:
-                is_writable = False
-            
-            if not is_writable:
-                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
-            else:
-                self.out_folder_var.set(folder)
-
-    def _refresh_list(self):
-        folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
-        self._folder_path = folder
-        self._update_folder_entry(folder)
-        self.file_listbox.delete(0, tk.END)
-        if not folder or not os.path.exists(folder): return
-        
-        # 支持主流的影片與音訊格式
-        valid_exts = ('.mp4', '.mkv', '.avi', '.flv', '.mov', '.webm', '.ts', '.mp3', '.wav', '.m4a', '.vob', '.dat')
-        files = sorted([f for f in os.listdir(folder) if f.lower().endswith(valid_exts)])
-        for f in files: self.file_listbox.insert(tk.END, f)
-
-    def _on_file_select(self, event):
-        sel = self.file_listbox.curselection()
-        if not sel: return
-        filename = self.file_listbox.get(sel[0])
-        full_path = os.path.join(self._folder_path, filename)
-        self.current_file = full_path
-        
-        # 取得檔案大小
-        size_bytes = os.path.getsize(full_path)
-        size_mb = size_bytes / (1024 * 1024)
-        
-        self.info_label.config(text=f"📂 檔名：{filename}\n⚖️ 大小：{size_mb:.2f} MB\n📍 路徑：{full_path}", fg="#333", font=("Microsoft JhengHei", 9, "bold"))
-        self.convert_btn.config(state="normal")
-
-        # 智慧唯讀性與可寫性探針校驗，決定介面上預設展示的儲存路徑
-        is_writable = True
-        test_file = os.path.join(self._folder_path, ".write_test")
-        try:
-            with open(test_file, "w") as f:
-                pass
-            os.remove(test_file)
-        except Exception:
-            is_writable = False
-            
-        if is_writable:
-            self.out_folder_var.set(self._folder_path)
-        else:
-            self.out_folder_var.set(self.download_path_var.get())
-
-        # 自動搜尋同目錄下同名且副檔名為 .srt 的檔案
-        base, _ = os.path.splitext(filename)
-        srt_name = f"{base}.srt"
-        srt_path = os.path.join(self._folder_path, srt_name)
-        if os.path.exists(srt_path):
-            self.sub_path_var.set(srt_path)
-            self.merge_sub_var.set(True)
-            self._on_sub_chk_change()
-        else:
-            self.sub_path_var.set("")
-            self.merge_sub_var.set(False)
-            self._on_sub_chk_change()
-
-        # 智慧偵測 DVD 連續 VOB 檔案
-        self.detected_vobs = []
-        self.merge_vobs_var.set(False)
-        self.merge_vobs_chk.pack_forget()
-        
-        filename_lower = filename.lower()
-        if filename_lower.endswith(".vob"):
-            import re
-            # DVD 的正片檔案命名通常為 VTS_XX_Y.VOB (其中 Y >= 1)
-            match = re.match(r'^(vts_\d+_)(\d+)\.vob$', filename_lower)
-            if match:
-                prefix = match.group(1)
-                current_idx = int(match.group(2))
-                if current_idx > 0:
-                    vob_files = []
-                    i = 1
-                    while True:
-                        target_name = f"{prefix}{i}.vob"
-                        target_path = None
-                        try:
-                            for f in os.listdir(self._folder_path):
-                                if f.lower() == target_name:
-                                    target_path = os.path.join(self._folder_path, f)
-                                    break
-                        except Exception:
-                            pass
-                        if target_path:
-                            vob_files.append(target_path)
-                            i += 1
-                        else:
-                            break
-                            
-                    if len(vob_files) > 1:
-                        self.detected_vobs = vob_files
-                        first_name = os.path.basename(vob_files[0])
-                        last_name = os.path.basename(vob_files[-1])
-                        self.merge_vobs_chk.config(text=f"✨ 偵測到連續 DVD 影片檔案 ({first_name} ~ {last_name})，是否勾選此處進行一鍵無縫合併轉檔？")
-                        self.merge_vobs_chk.pack(fill="x", anchor="w", padx=5, pady=5)
-
-    def _on_format_combo_change(self, event):
-        fmt = self.format_combo.get()
-        if "MP3" in fmt or "WAV" in fmt:
-            # 音訊格式隱藏解析度、編碼速度與外掛字幕設定
-            self.row2.pack_forget()
-            self.row3.pack_forget()
-            self.sub_row.pack_forget()
-        else:
-            # 影片格式顯示解析度、編碼速度與外掛字幕設定
-            self.row2.pack(fill="x", pady=5)
-            self.row3.pack(fill="x", pady=5)
-            self.sub_row.pack(fill="x", pady=5)
-
-    def _on_sub_chk_change(self):
-        state = "normal" if self.merge_sub_var.get() else "disabled"
-        self.sub_btn.config(state=state)
-        if self.merge_sub_var.get() and not self.sub_path_var.get():
-            self._browse_srt()
-
-    def _browse_srt(self):
-        initial_dir = self._folder_path or self.download_path_var.get()
-        f = filedialog.askopenfilename(
-            initialdir=initial_dir,
-            filetypes=[("字幕檔案", "*.srt"), ("所有檔案", "*.*")]
-        )
-        if f:
-            self.sub_path_var.set(f)
-            self.merge_sub_var.set(True)
-            self._on_sub_chk_change()
-
-    def _browse_out_folder(self):
-        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
-        folder = filedialog.askdirectory(initialdir=initial_dir)
-        if folder:
-            # 智慧寫入測試，確保使用者選擇的目錄不是唯讀的！防呆防到底！
-            is_writable = True
-            test_file = os.path.join(folder, ".write_test")
-            try:
-                with open(test_file, "w") as f:
-                    pass
-                os.remove(test_file)
-            except Exception:
-                is_writable = False
-            
-            if not is_writable:
-                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
-            else:
-                self.out_folder_var.set(folder)
-
-    def _do_convert(self):
-        if not self.current_file: return
-        
-        in_path = self.current_file
-        target_folder = self.out_folder_var.get()
-        if not target_folder:
-            target_folder = self.download_path_var.get()
-            
-        # 確保儲存路徑實體存在
-        os.makedirs(target_folder, exist_ok=True)
-            
-        # 判斷是否啟用 DVD 連續 VOB 一鍵合併轉檔
-        is_merge = getattr(self, 'detected_vobs', None) and self.merge_vobs_var.get()
-        
-        if is_merge:
-            first_vob = self.detected_vobs[0]
-            last_vob = self.detected_vobs[-1]
-            base = f"{os.path.splitext(os.path.basename(first_vob))[0]}_to_{os.path.splitext(os.path.basename(last_vob))[0]}"
-        else:
-            base, _ = os.path.splitext(os.path.basename(in_path))
-        
-        # 決定目標副檔名與格式
-        fmt_sel = self.format_combo.get()
-        if "MP4" in fmt_sel:
-            out_ext = ".mp4"
-        elif "MKV" in fmt_sel:
-            out_ext = ".mkv"
-        elif "MP3" in fmt_sel:
-            out_ext = ".mp3"
-        else:
-            out_ext = ".wav"
-            
-        out_name = f"{base}_converted{out_ext}"
-        out_path = os.path.join(target_folder, out_name)
-        
-        # 防撞名機制
-        base_out = f"{base}_converted"
-        counter = 1
-        while os.path.exists(out_path):
-            out_path = os.path.join(target_folder, f"{base_out}({counter}){out_ext}")
-            counter += 1
-            
-        self.convert_btn.config(state="disabled")
-        self.status_label.config(text="🎬 影音轉檔壓縮中，這可能需要幾分鐘，請稍候...", fg="blue")
-            
-        self.progress_bar['value'] = 0
-        self.progress_label.config(text="正在分析影音結構，請稍候...")
-        
-        # 背景線程轉檔
-        vobs = self.detected_vobs if is_merge else None
-        threading.Thread(target=self._run_ffmpeg_convert, args=(in_path, out_path, fmt_sel, vobs), daemon=True).start()
-
-    def _run_ffmpeg_convert(self, in_path, out_path, fmt_sel, vob_list=None):
-        try:
-            # 取得影片總時長
-            if vob_list:
-                total_seconds = sum(self._get_video_duration(p) for p in vob_list)
-            else:
-                total_seconds = self._get_video_duration(in_path)
-                
-            if total_seconds > 0:
-                self.parent.after(0, lambda: self.progress_bar.pack(fill="x", pady=5))
-                self.parent.after(0, lambda: self.progress_label.pack(pady=2))
-            
-            # 針對 DVD VOB 轉成 MKV 的智慧多音軌與多字幕無損保留
-            is_dvd_mkv = "MKV" in fmt_sel and in_path.lower().endswith(".vob")
-            
-            # 基本命令
-            if vob_list:
-                vob_names = [os.path.basename(p) for p in vob_list]
-                concat_str = "concat:" + "|".join(vob_names)
-                cmd = ["ffmpeg", "-y", "-i", concat_str]
-            else:
-                cmd = ["ffmpeg", "-y", "-i", in_path]
-            
-            if "MP3" in fmt_sel:
-                # 轉為高品質音訊
-                cmd += ["-vn", "-acodec", "libmp3lame", "-ab", "320k", out_path]
-            elif "WAV" in fmt_sel:
-                # 轉為無損音訊
-                cmd += ["-vn", out_path]
-            else:
-                # 影片格式轉換及畫質壓縮
-                scale = self.scale_combo.get()
-                vf_args = []
-                
-                # 解析度降低處理
-                if "1080p" in scale:
-                    vf_args.append("scale=-2:1080")
-                elif "720p" in scale:
-                    vf_args.append("scale=-2:720")
-                elif "480p" in scale:
-                    vf_args.append("scale=-2:480")
-                
-                # 設定轉檔速度 (Preset)
-                speed = self.speed_combo.get()
-                preset_val = "medium"
-                if "極速" in speed:
-                    preset_val = "veryfast"
-                elif "高品質" in speed:
-                    preset_val = "slow"
-                    
-                if is_dvd_mkv:
-                    # 智慧 Remux 保留多軌道：僅映射影音與字幕軌 (-map 0:v -map 0:a -map 0:s?)，過濾不相容的資料軌 (如 dvd_nav_packet)
-                    cmd += ["-map", "0:v", "-map", "0:a", "-map", "0:s?"]
-                    if vf_args:
-                        cmd += ["-vf", ",".join(vf_args)]
-                    cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "copy", "-c:s", "copy", out_path]
-                else:
-                    # 一般轉檔單軌處理
-                    if self.merge_sub_var.get() and self.sub_path_var.get():
-                        sub_path = self.sub_path_var.get()
-                        if os.path.exists(sub_path):
-                            escaped_sub = self._escape_ffmpeg_path(sub_path)
-                            vf_args.append(f"subtitles='{escaped_sub}'")
-                    
-                    if vf_args:
-                        cmd += ["-vf", ",".join(vf_args)]
-                        
-                    cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "aac", "-b:a", "192k", out_path]
-                
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="ignore",
-                bufsize=1,
-                cwd=self._folder_path,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-
-            start_time = time.time()
-            time_pattern = re.compile(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)")
-            speed_pattern = re.compile(r"speed=\s*(\d+\.?\d*)x")
-            last_lines = []
-
-            while True:
-                line = process.stdout.readline()
-                if not line:
-                    break
-                line = line.strip()
-                if line:
-                    last_lines.append(line)
-                    if len(last_lines) > 10:
-                        last_lines.pop(0)
-                
-                # 解析時間進度
-                time_match = time_pattern.search(line)
-                if time_match and total_seconds > 0:
-                    h, m, s = time_match.group(1), time_match.group(2), time_match.group(3)
-                    curr_seconds = int(h) * 3600 + int(m) * 60 + float(s)
-                    
-                    # 計算百分比
-                    percent = min(100.0, max(0.0, (curr_seconds / total_seconds) * 100))
-                    
-                    # 解析速度
-                    speed_match = speed_pattern.search(line)
-                    speed_str = f"{speed_match.group(1)}x" if speed_match else "N/A"
-                    
-                    # 計算剩餘時間 (ETA)
-                    elapsed = time.time() - start_time
-                    if curr_seconds > 0:
-                        remaining_seconds = max(0.0, (total_seconds - curr_seconds) * (elapsed / curr_seconds))
-                        eta_str = self._format_eta(remaining_seconds)
-                    else:
-                        eta_str = "計算中..."
-                        
-                    # 格式化顯示文字
-                    curr_time_str = f"{int(curr_seconds)//60:02d}:{int(curr_seconds)%60:02d}"
-                    total_time_str = f"{int(total_seconds)//60:02d}:{int(total_seconds)%60:02d}"
-                    
-                    progress_text = f"🔄 進度: {percent:.1f}% ({curr_time_str} / {total_time_str}) | 速度: {speed_str} | 剩餘時間: {eta_str}"
-                    
-                    # 更新主執行緒 UI
-                    self.parent.after(0, lambda p=percent, t=progress_text: self._update_progress_ui(p, t))
-
-            process.wait()
-
-            if process.returncode == 0:
-                self.parent.after(0, lambda: self.status_label.config(text=f"✅ 轉檔成功：{os.path.basename(out_path)}", fg="green"))
-                self.parent.after(0, self._refresh_list)
-            else:
-                # 尋找錯誤訊息
-                err_msg = "請確認檔案格式是否受支援"
-                for l in reversed(last_lines):
-                    if any(w in l for w in ["Error", "Invalid", "Unable", "Failed", "error"]):
-                        err_msg = l
-                        break
-                self.parent.after(0, lambda e=err_msg: self.status_label.config(text=f"❌ 轉檔失敗：{e}", fg="red"))
-        except Exception as e:
-            self.parent.after(0, lambda: self.status_label.config(text=f"❌ 錯誤：{str(e)}", fg="red"))
-        finally:
-            self.parent.after(0, lambda: self.convert_btn.config(state="normal"))
-            self.parent.after(0, lambda: self.progress_bar.pack_forget())
-            self.parent.after(0, lambda: self.progress_label.pack_forget())
-
-    def _get_video_duration(self, file_path):
-        # 1. 嘗試使用 ffprobe 快速取得時長
-        try:
-            cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file_path]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            if res.returncode == 0 and res.stdout.strip():
-                return float(res.stdout.strip())
-        except Exception:
-            pass
-        
-        # 2. 如果 ffprobe 失敗，嘗試使用 ffmpeg 解析標頭
-        try:
-            cmd = ["ffmpeg", "-i", file_path]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            match = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", res.stderr)
-            if match:
-                h, m, s = float(match.group(1)), float(match.group(2)), float(match.group(3))
-                return h * 3600 + m * 60 + s
-        except Exception:
-            pass
-        return 0.0
-
-    def _update_progress_ui(self, value, text):
-        self.progress_bar['value'] = value
-        self.progress_label.config(text=text)
-
-    def _format_eta(self, seconds):
-        s = int(seconds)
-        h = s // 3600
-        m = (s % 3600) // 60
-        sec = s % 60
-        if h > 0:
-            return f"{h:02d}:{m:02d}:{sec:02d}"
-        return f"{m:02d}:{sec:02d}"
-
-    def _escape_ffmpeg_path(self, path):
-        # 將 Windows 反斜線 \ 轉換為正斜線 /
-        p = path.replace("\\", "/")
-        # 處理 Windows 磁碟機號的冒號 (例如 C: 轉換為 C\:)，防範 FFmpeg 濾鏡解析出錯
-        if ":" in p:
-            drive, rest = p.split(":", 1)
-            p = f"{drive}\\:{rest}"
-        return p
-
-
-# ===========================================================================
-# MP3MergerTab：MP3 合併工具的完整 UI 類別
-# ===========================================================================
-class MP3MergerTab:
-    def __init__(self, parent, download_path_var):
-        self.parent = parent
-        self.download_path_var = download_path_var
-        self.staged_files = []  # 存儲路徑
-        self.staged_durations = []  # 存儲每首歌的長度 (ms)
+        return f"{m}:{s:05.2f}"
+
+
+class MP3MergerSubFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.download_path_var = controller.download_path_var
+        self.staged_files = []  
+        self.staged_durations = []  
         self.total_ms = 0
         self.fade_var = tk.BooleanVar(value=False)
         self.fade_sec = tk.IntVar(value=3)
         
-        # 監聽融合設定，即時更新時間軸
         self.fade_var.trace_add("write", lambda *args: self._update_total())
         self.fade_sec.trace_add("write", lambda *args: self._update_total())
         
         self._update_job = None
         self._seeking = False
         self._current_song_idx = -1
-        
-        # 使用雙播放器以實現預覽重疊
         self.players = [MCIPlayer(alias="merger_p1"), MCIPlayer(alias="merger_p2")]
         self.active_player_idx = 0
         self._next_song_triggered = False 
         self._build_ui()
 
     def _build_ui(self):
-        # 頂部：資料夾選擇 (與裁剪工具一致)
-        folder_frame = tk.Frame(self.parent)
-        folder_frame.pack(fill="x", padx=10, pady=(10, 0))
-        tk.Label(folder_frame, text="📁 歌曲資料夾：", font=("Microsoft JhengHei", 10)).pack(side="left")
-        self.path_entry = tk.Entry(folder_frame, textvariable=self.download_path_var, font=("Microsoft JhengHei", 10))
-        self.path_entry.pack(side="left", fill="x", expand=True, padx=5)
-        tk.Button(folder_frame, text="選擇", command=self._browse_folder).pack(side="left", padx=2)
-        tk.Button(folder_frame, text="開啟", command=self._open_folder).pack(side="left", padx=2)
-
-        # 使用三欄佈局
-        main_body = tk.Frame(self.parent)
-        main_body.pack(fill="both", expand=True)
-
-        # 1. 左側：來源檔案列表
-        left_frame = tk.Frame(main_body, width=220)
-        left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
-        left_frame.pack_propagate(False)
-        tk.Label(left_frame, text="1. 來源 MP3 (可多選)", font=("Microsoft JhengHei", 10, "bold")).pack(anchor="w")
-        tk.Label(left_frame, text="💡 按住 Shift 點選前後可連續選取", font=("Microsoft JhengHei", 8), fg="#666").pack(anchor="w")
-        
-        # 先 pack 下方按鈕，確保不會被清單擠掉
-        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_src_list, font=("Microsoft JhengHei", 9)).pack(side="bottom", fill="x", pady=2)
-        tk.Button(left_frame, text="➕ 加入合併清單", command=self._add_to_merge, bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 10, "bold")).pack(side="bottom", fill="x")
-        
-        # 支援自訂選取行為：單擊切換 + Shift 範圍選取
-        self.src_listbox = tk.Listbox(left_frame, font=("Microsoft JhengHei", 9), selectmode="extended")
-        self.src_listbox.pack(fill="both", expand=True, pady=5)
-        self.src_listbox.bind("<Button-1>", self._on_listbox_click)
-        self._last_idx = None
-
-        # 2. 中間：待合併清單 (Staging Area)
-        mid_frame = tk.Frame(main_body, width=260)
-        mid_frame.pack(side="left", fill="y", padx=5, pady=10)
+        mid_frame = tk.Frame(self, width=240)
+        mid_frame.pack(side="left", fill="y", padx=5, pady=5)
         mid_frame.pack_propagate(False)
-        tk.Label(mid_frame, text="2. 合併清單", font=("Microsoft JhengHei", 10, "bold")).pack(anchor="w")
         
-        # 先 pack 下方按鈕
+        tk.Label(mid_frame, text="1. 合併清單", font=("Microsoft JhengHei", 10, "bold")).pack(anchor="w")
+        
         tk.Button(mid_frame, text="🧹 清除全部歌曲", command=self._clear_all, bg="#757575", fg="white").pack(side="bottom", fill="x", pady=2)
         tk.Button(mid_frame, text="🗑️ 移除選定歌曲", command=self._remove_from_merge, bg="#f44336", fg="white").pack(side="bottom", fill="x", pady=2)
         
@@ -3650,13 +2580,12 @@ class MP3MergerTab:
 
         self.merge_listbox = tk.Listbox(mid_frame, font=("Microsoft JhengHei", 9))
         self.merge_listbox.pack(fill="both", expand=True, pady=5)
+        
+        right_frame = tk.Frame(self)
+        right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=5)
+        
+        tk.Label(right_frame, text="2. 預覽與輸出", font=("Microsoft JhengHei", 10, "bold")).pack(anchor="w")
 
-        # 3. 右側：預覽與執行
-        right_frame = tk.Frame(self.parent)
-        right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
-        tk.Label(right_frame, text="3. 預覽與輸出", font=("Microsoft JhengHei", 10, "bold")).pack(anchor="w")
-
-        # 播放控制
         ctrl_frame = tk.Frame(right_frame)
         ctrl_frame.pack(fill="x", pady=5)
         tk.Button(ctrl_frame, text="⏮ -5s", command=lambda: self._seek_relative(-5000)).pack(side="left", padx=1)
@@ -3670,16 +2599,13 @@ class MP3MergerTab:
         self.time_label = tk.Label(right_frame, text="00:00 / 00:00", font=("Microsoft JhengHei", 10))
         self.time_label.pack(pady=2)
 
-        # 虛擬進度條 (Canvas)
         canvas_outer = tk.Frame(right_frame, bg="#888", pady=1)
         canvas_outer.pack(fill="x", pady=5)
-        self.merge_canvas = tk.Canvas(canvas_outer, height=40, bg="#eee", highlightthickness=0, cursor="hand2")
+        self.merge_canvas = tk.Canvas(canvas_outer, height=35, bg="#eee", highlightthickness=0, cursor="hand2")
         self.merge_canvas.pack(fill="both", expand=True)
         self.merge_canvas.bind("<ButtonPress-1>", self._canvas_click)
         self.merge_canvas.bind("<Configure>", lambda e: self._draw_canvas())
 
-        # 輸出設定
-        # 儲存資料夾 Row (預設為 download_path_var 的值，並可自主選擇)
         self.out_folder_row = tk.Frame(right_frame)
         self.out_folder_row.pack(fill="x", pady=5)
         tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 10, "bold"), width=12, anchor="w").pack(side="left")
@@ -3688,20 +2614,18 @@ class MP3MergerTab:
         self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
         tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left")
 
-        tk.Label(right_frame, text="合併後檔名：").pack(anchor="w", pady=(10, 0))
+        tk.Label(right_frame, text="合併後檔名：").pack(anchor="w", pady=(5, 0))
         self.out_entry = tk.Entry(right_frame)
         self.out_entry.pack(fill="x", pady=5)
         self.out_entry.insert(0, "merged_audio")
 
-        # 融合效果設定 (Crossfade)
         fade_frame = tk.Frame(right_frame)
         fade_frame.pack(fill="x", pady=5)
         tk.Checkbutton(fade_frame, text="✨ 啟用融合效果 (Crossfade)", variable=self.fade_var, 
                        font=("Microsoft JhengHei", 10, "bold"), fg="#1976D2").pack(side="left")
         tk.Label(fade_frame, text="  融合秒數：").pack(side="left")
         tk.Spinbox(fade_frame, from_=1, to=5, textvariable=self.fade_sec, width=5).pack(side="left")
-        tk.Label(fade_frame, text="(註：融合需重新轉檔，速度較慢)", font=("Microsoft JhengHei", 8), fg="gray").pack(side="left", padx=5)
-
+        
         self.merge_btn = tk.Button(right_frame, text="🚀 開始合併所有歌曲", command=self._do_merge, 
                                    bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 12, "bold"), height=2)
         self.merge_btn.pack(fill="x", pady=10)
@@ -3709,19 +2633,8 @@ class MP3MergerTab:
         self.status_label = tk.Label(right_frame, text="", fg="blue")
         self.status_label.pack()
 
-        # 初始化載入檔案
-        self._refresh_src_list()
-
-    def _browse_folder(self):
-        d = filedialog.askdirectory(initialdir=self.download_path_var.get())
-        if d:
-            self.download_path_var.set(d)
-            self._refresh_src_list()
-
-    def _open_folder(self):
-        d = self.download_path_var.get()
-        if os.path.exists(d):
-            os.startfile(d)
+    def _refresh_src_list(self):
+        pass
 
     def _browse_out_folder(self):
         initial_dir = self.out_folder_var.get() or self.download_path_var.get()
@@ -3741,66 +2654,20 @@ class MP3MergerTab:
             else:
                 self.out_folder_var.set(folder)
 
-    def _refresh_src_list(self):
-        folder = self.download_path_var.get()
-        self.src_listbox.delete(0, tk.END)
-        self._last_idx = None
-        if os.path.exists(folder):
-            files = sorted([f for f in os.listdir(folder) if f.lower().endswith('.mp3')])
-            for f in files:
-                self.src_listbox.insert(tk.END, f)
-
-    def _on_listbox_click(self, event):
-        """自定義選取邏輯：單擊即切換(Toggle)，Shift 則執行範圍選取"""
-        idx = self.src_listbox.nearest(event.y)
-        if idx < 0: return
-        
-        # 判斷是否按住 Shift (state & 0x0001)
-        if (event.state & 0x0001) and self._last_idx is not None:
-            # 範圍選取
-            start = min(self._last_idx, idx)
-            end = max(self._last_idx, idx)
-            # 先清除其他，再選取範圍（或根據需求決定是否保留舊有選取）
-            # 這裡採標準 Shift 行為：選取該區間
-            for i in range(start, end + 1):
-                self.src_listbox.selection_set(i)
+    def _add_to_merge_from_path(self, fpath):
+        fname = os.path.basename(fpath)
+        unique_alias = f"info_{int(time.time()*1000)}"
+        temp_player = MCIPlayer(alias=unique_alias)
+        if temp_player.open(fpath):
+            dur = temp_player.get_length()
+            temp_player.close()
+            self.staged_files.append(fpath)
+            self.staged_durations.append(dur)
+            self.merge_listbox.insert(tk.END, f"[{self._fmt_ms(dur)}] {fname}")
+            self._update_total()
+            self._update_out_filename()
         else:
-            # 單擊切換 (Toggle)
-            if self.src_listbox.selection_includes(idx):
-                self.src_listbox.selection_clear(idx)
-            else:
-                self.src_listbox.selection_set(idx)
-            self._last_idx = idx
-            
-        return "break" # 阻止 Tkinter 預設行為
-
-    def _add_to_merge(self):
-        sel = self.src_listbox.curselection()
-        if not sel: return
-        
-        folder = self.download_path_var.get()
-        failed_count = 0
-        
-        for i in sel:
-            fname = self.src_listbox.get(i)
-            fpath = os.path.join(folder, fname)
-            
-            # 使用唯一 Alias 獲取時長，避免與主播放器或其他實例衝突
-            unique_alias = f"info_{int(time.time()*1000)}_{i}"
-            temp_player = MCIPlayer(alias=unique_alias)
-            if temp_player.open(fpath):
-                dur = temp_player.get_length()
-                temp_player.close()
-                self.staged_files.append(fpath)
-                self.staged_durations.append(dur)
-                self.merge_listbox.insert(tk.END, f"[{self._fmt_ms(dur)}] {fname}")
-            else:
-                failed_count += 1
-        
-        self._update_total()
-        self._update_out_filename()
-        if failed_count > 0:
-            messagebox.showwarning("警告", f"有 {failed_count} 個檔案無法讀取資訊。")
+            messagebox.showwarning("警告", "檔案無法讀取資訊。")
 
     def _remove_from_merge(self):
         sel = self.merge_listbox.curselection()
@@ -3813,23 +2680,34 @@ class MP3MergerTab:
         self._update_total()
         self._update_out_filename()
 
+    def _clear_all(self):
+        if not self.staged_files: return
+        if messagebox.askyesno("確認", "確定要清除合併清單中的所有歌曲嗎？"):
+            self._stop()
+            self.staged_files = []
+            self.staged_durations = []
+            self.merge_listbox.delete(0, tk.END)
+            self._update_total()
+
     def _move_item(self, direction):
         sel = self.merge_listbox.curselection()
         if not sel: return
         idx = sel[0]
         new_idx = idx + direction
-        if 0 <= new_idx < len(self.staged_files):
-            self._stop()
-            # 交換資料
-            self.staged_files[idx], self.staged_files[new_idx] = self.staged_files[new_idx], self.staged_files[idx]
-            self.staged_durations[idx], self.staged_durations[new_idx] = self.staged_durations[new_idx], self.staged_durations[idx]
-            # 更新 Listbox
-            txt = self.merge_listbox.get(idx)
-            self.merge_listbox.delete(idx)
-            self.merge_listbox.insert(new_idx, txt)
-            self.merge_listbox.selection_set(new_idx)
-            self._draw_canvas()
-            self._update_out_filename()
+        if not (0 <= new_idx < len(self.staged_files)): return
+        
+        self._stop()
+        
+        self.staged_files[idx], self.staged_files[new_idx] = self.staged_files[new_idx], self.staged_files[idx]
+        self.staged_durations[idx], self.staged_durations[new_idx] = self.staged_durations[new_idx], self.staged_durations[idx]
+        
+        text = self.merge_listbox.get(idx)
+        self.merge_listbox.delete(idx)
+        self.merge_listbox.insert(new_idx, text)
+        self.merge_listbox.selection_clear(0, tk.END)
+        self.merge_listbox.selection_set(new_idx)
+        
+        self._update_total()
 
     def _update_total(self):
         n = len(self.staged_files)
@@ -3841,10 +2719,9 @@ class MP3MergerTab:
         else:
             self.total_ms = sum(self.staged_durations)
         self.time_label.config(text=f"00:00 / {self._fmt_ms(self.total_ms)}")
-        self._draw_canvas()
+        self._draw_canvas(0)
 
     def _update_out_filename(self):
-        """以合併清單第一首歌的檔名作為預設輸出檔名"""
         if self.staged_files:
             stem = os.path.splitext(os.path.basename(self.staged_files[0]))[0]
             self.out_entry.delete(0, tk.END)
@@ -3852,15 +2729,6 @@ class MP3MergerTab:
         else:
             self.out_entry.delete(0, tk.END)
             self.out_entry.insert(0, "merged_audio")
-
-    def _clear_all(self):
-        if not self.staged_files: return
-        if messagebox.askyesno("確認", "確定要清除合併清單中的所有歌曲嗎？"):
-            self._stop()
-            self.staged_files = []
-            self.staged_durations = []
-            self.merge_listbox.delete(0, tk.END)
-            self._update_total()
 
     def _draw_canvas(self, current_ms=0):
         c = self.merge_canvas
@@ -3873,22 +2741,20 @@ class MP3MergerTab:
         colors       = ["#81C784", "#64B5F6", "#FFD54F", "#BA68C8", "#FF8A65", "#4DB6AC"]
         fade_colors  = ["#43A047", "#1E88E5", "#F9A825", "#8E24AA", "#E64A19", "#00897B"]
         do_fade = self.fade_var.get() and len(self.staged_files) > 1
-        fade_ms = (self.fade_sec.get() * 1000) if do_fade else 0
+        fade_ms = self.fade_sec.get() * 1000 if do_fade else 0
 
-        acc_virtual = 0  # 虛擬時間軸累積位置 (ms)
+        acc_virtual = 0
         for i, dur in enumerate(self.staged_durations):
-            is_last = (i == len(self.staged_durations) - 1)
-            eff_dur = dur - fade_ms if (do_fade and not is_last) else dur
-
+            eff_dur = dur - fade_ms if (do_fade and i < len(self.staged_durations)-1) else dur
             x0 = int(acc_virtual / self.total_ms * w)
             x1 = int((acc_virtual + dur) / self.total_ms * w)
-            c.create_rectangle(x0, 0, x1, h, fill=colors[i % len(colors)], outline="")
-
-            # 融合重疊區塊：上半層使用較深色呈現漸變感
+            x1 = min(x1, w)
+            
+            c.create_rectangle(x0, 0, x1, h // 2, fill=colors[i % len(colors)], outline="white", width=1)
+            
             if do_fade and i > 0:
-                fade_x0 = x0
+                fade_x0 = int((acc_virtual) / self.total_ms * w)
                 fade_x1 = int((acc_virtual + fade_ms) / self.total_ms * w)
-                # 以斜線漸層模擬重疊 (tkinter無漸層，用半透明窄條代替)
                 step = max(1, (fade_x1 - fade_x0) // 10)
                 prev_color = fade_colors[(i-1) % len(fade_colors)]
                 cur_color  = fade_colors[i % len(fade_colors)]
@@ -3896,30 +2762,23 @@ class MP3MergerTab:
                     ratio = (s - fade_x0) / max(1, fade_x1 - fade_x0)
                     stripe_color = prev_color if ratio < 0.5 else cur_color
                     c.create_rectangle(s, 0, s + step, h // 2, fill=stripe_color, outline="")
-                # 標示融合區
                 mid = (fade_x0 + fade_x1) // 2
                 c.create_text(mid, h // 2, text="↔", font=("Microsoft JhengHei", 8), fill="white", anchor="center")
 
-            # 標示起始時間
             if x1 - x0 > 45:
                 t_str = self._fmt_ms(int(acc_virtual))
                 c.create_text(x0 + 3, h - 4, text=t_str, anchor="sw", font=("Microsoft JhengHei", 8), fill="#222")
 
             acc_virtual += eff_dur
 
-        # 播放進度條
         xp = int(current_ms / self.total_ms * w) if self.total_ms > 0 else 0
         c.create_rectangle(xp - 2, 0, xp + 2, h, fill="#f44336", outline="")
 
     def _get_info_at(self, ms):
-        """根據總時間點找到是對應哪首歌以及在該歌中的相對時間"""
         if not self.staged_durations: return -1, 0
-        
         fade_ms = (self.fade_sec.get() * 1000) if self.fade_var.get() else 0
         acc = 0
         for i, dur in enumerate(self.staged_durations):
-            # 該首歌在虛擬時間軸上的「可用」長度（扣除與下一首的重疊部分）
-            # 最後一首不扣除
             effective_dur = dur - fade_ms if i < len(self.staged_durations)-1 else dur
             if acc <= ms < acc + effective_dur + (fade_ms if i < len(self.staged_durations)-1 else 0):
                 return i, ms - acc
@@ -3945,7 +2804,6 @@ class MP3MergerTab:
         idx, rel_ms = self._get_info_at(total_ms)
         if idx < 0: return
         
-        # 停止所有播放
         for p in self.players: p.stop()
         
         self.active_player_idx = 0
@@ -3965,13 +2823,13 @@ class MP3MergerTab:
         self._next_song_triggered = False
         self.play_btn.config(text="▶ 播放合併效果")
         if self._update_job:
-            self.parent.after_cancel(self._update_job)
+            self.after_cancel(self._update_job)
             self._update_job = None
         self.time_label.config(text=f"00:00 / {self._fmt_ms(self.total_ms)}")
         self._draw_canvas(0)
 
     def _start_loop(self):
-        if self._update_job: self.parent.after_cancel(self._update_job)
+        if self._update_job: self.after_cancel(self._update_job)
         self._do_update()
 
     def _do_update(self):
@@ -3980,11 +2838,10 @@ class MP3MergerTab:
 
         if mode not in ("playing", "paused"):
             if self._next_song_triggered and self._current_song_idx + 1 < len(self.staged_files):
-                # 切換到預加載的下一首
                 self.active_player_idx = 1 - self.active_player_idx
                 self._current_song_idx += 1
                 self._next_song_triggered = False
-                self._update_job = self.parent.after(80, self._do_update)
+                self._update_job = self.after(80, self._do_update)
             else:
                 self._stop()
             return
@@ -3994,7 +2851,6 @@ class MP3MergerTab:
             do_fade = self.fade_var.get()
             fade_ms = (self.fade_sec.get() * 1000) if do_fade else 0
 
-            # 計算虛擬總進度
             acc = 0
             for i in range(self._current_song_idx):
                 eff = self.staged_durations[i] - fade_ms if (do_fade and i < len(self.staged_durations)-1) else self.staged_durations[i]
@@ -4008,22 +2864,19 @@ class MP3MergerTab:
             time_left = dur_current - rel_pos
             has_next = (self._current_song_idx + 1 < len(self.staged_files))
 
-            # ---- 預加載下一首 ----
-            PRELOAD_MS = max(fade_ms, 3000)  # 稍微提早一點預加載，確保流暢
+            PRELOAD_MS = max(fade_ms, 3000)  
             if has_next and time_left <= PRELOAD_MS and not self._next_song_triggered:
                 self._next_song_triggered = True
                 next_idx = self._current_song_idx + 1
                 other_p = self.players[1 - self.active_player_idx]
                 if do_fade:
                     if other_p.open(self.staged_files[next_idx]):
-                        other_p.set_volume(0) # 融合模式初始音量 0
+                        other_p.set_volume(0) 
                         other_p.play()
                 else:
                     if other_p.open(self.staged_files[next_idx]):
-                        other_p.set_volume(1000) # 非融合模式確保音量 1000
-                        # 暫不 play
+                        other_p.set_volume(1000) 
 
-            # ---- 融合音量漸變 ----
             if do_fade and self._next_song_triggered and time_left <= fade_ms:
                 fade_ratio = max(0.0, min(1.0, time_left / max(fade_ms, 1)))
                 try:
@@ -4031,8 +2884,7 @@ class MP3MergerTab:
                     self.players[1 - self.active_player_idx].set_volume(int((1.0 - fade_ratio) * 1000))
                 except Exception: pass
 
-            # ---- 當前歌曲結束：切換主播放器 ----
-            if time_left <= 120: # 稍微調大容錯，減少卡頓感
+            if time_left <= 120: 
                 if self._next_song_triggered:
                     try:
                         self.players[1 - self.active_player_idx].set_volume(1000)
@@ -4045,14 +2897,13 @@ class MP3MergerTab:
                     self._current_song_idx += 1
                     self._next_song_triggered = False
                 elif has_next:
-                    # 安全備案：不應發生
                     self._play_at(total_pos + 1)
                     return
                 else:
                     self._stop()
                     return
 
-        self._update_job = self.parent.after(80, self._do_update)
+        self._update_job = self.after(80, self._do_update)
 
     def _canvas_click(self, event):
         if self.total_ms <= 0: return
@@ -4080,42 +2931,42 @@ class MP3MergerTab:
         os.makedirs(target_folder, exist_ok=True)
         out_path = os.path.join(target_folder, out_name + ".mp3")
         
-        # 處理檔名重複
         base = out_name
         counter = 1
         while os.path.exists(out_path):
             out_name = f"{base}({counter})"
-            out_path = os.path.join(self.download_path_var.get(), out_name + ".mp3")
+            out_path = os.path.join(target_folder, out_name + ".mp3")
             counter += 1
 
         self._stop()
         self.merge_btn.config(state="disabled")
-        self.status_label.config(text="合併中，請稍候...", fg="blue")
-        threading.Thread(target=self._run_ffmpeg_merge, args=(self.staged_files, out_path), daemon=True).start()
+        self.status_label.config(text="⚙️ 音訊合併中，請稍候...", fg="blue")
+        
+        do_fade = self.fade_var.get()
+        fade_d = self.fade_sec.get()
+        threading.Thread(target=self._run_ffmpeg_merge, args=(list(self.staged_files), out_path, do_fade, fade_d), daemon=True).start()
 
-    def _run_ffmpeg_merge(self, files, out_path):
+    def _run_ffmpeg_merge(self, files, out_path, do_fade, fade_d):
         try:
-            do_fade = self.fade_var.get()
-            fade_d = self.fade_sec.get()
-
-            if not do_fade:
-                # 傳統高速合併 (concat)
-                list_file = os.path.join(self.download_path_var.get(), "concat_list.txt")
-                with open(list_file, "w", encoding="utf-8") as f:
-                    for fp in files:
-                        p = fp.replace("'", "'\\''")
-                        f.write(f"file '{p}'\n")
-                cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file, "-c", "copy", out_path]
+            if not do_fade or len(files) == 1:
+                # 簡單 Concat
+                temp_txt = os.path.join(os.path.dirname(out_path), f"temp_concat_{int(time.time())}.txt")
+                with open(temp_txt, "w", encoding="utf-8") as f:
+                    for item in files:
+                        escaped = item.replace("\\", "/")
+                        f.write(f"file '{escaped}'\n")
+                
+                cmd = [ffmpeg_path, "-y", "-f", "concat", "-safe", "0", "-i", temp_txt, "-c", "copy", out_path]
                 res = subprocess.run(cmd, capture_output=True, text=True)
-                if os.path.exists(list_file): os.remove(list_file)
+                try:
+                    os.remove(temp_txt)
+                except Exception: pass
             else:
-                # 融合效果合併 (acrossfade)
-                # 對於多個檔案，需要構建 complex_filter
-                cmd = ["ffmpeg", "-y"]
+                # acrossfade 濾鏡融合
+                cmd = [ffmpeg_path, "-y"]
                 for f in files:
                     cmd.extend(["-i", f])
                 
-                # 構建濾鏡鏈：[0][1]acrossfade=d=3[a1]; [a1][2]acrossfade=d=3[a2]...
                 filter_str = ""
                 last_label = "[0]"
                 for i in range(1, len(files)):
@@ -4129,22 +2980,1634 @@ class MP3MergerTab:
                 res = subprocess.run(cmd, capture_output=True, text=True)
 
             if res.returncode == 0:
-                self.parent.after(0, lambda: self.status_label.config(text=f"✅ 合併成功：{os.path.basename(out_path)}", fg="green"))
-                self.parent.after(0, self._refresh_src_list)
+                self.after(0, lambda: self.status_label.config(text=f"✅ 合併成功：{os.path.basename(out_path)}", fg="green"))
+                self.after(0, self.controller._refresh_list)
             else:
-                self.parent.after(0, lambda: self.status_label.config(text="❌ 合併失敗 (FFmpeg 錯誤)", fg="red"))
+                self.after(0, lambda: self.status_label.config(text="❌ 合併失敗 (FFmpeg 錯誤)", fg="red"))
         except Exception as e:
-            self.parent.after(0, lambda: self.status_label.config(text=f"❌ 錯誤: {e}", fg="red"))
+            err_msg = str(e)
+            self.after(0, lambda: self.status_label.config(text=f"❌ 錯誤: {err_msg}", fg="red"))
         finally:
-            self.parent.after(0, lambda: self.merge_btn.config(state="normal"))
+            self.after(0, lambda: self.merge_btn.config(state="normal"))
 
     @staticmethod
     def _fmt_ms(ms):
         s = int(ms) // 1000
         return f"{s // 60:02d}:{s % 60:02d}"
 
+
+# ===========================================================================
+# VideoEditorTab：整合影片裁剪與合併，共享左側影片檔案列表
+# ===========================================================================
+class VideoEditorTab:
+    def __init__(self, parent, download_path_var):
+        self.parent = parent
+        self.download_path_var = download_path_var
+        self.current_tab = "trim"
+        self._folder_path = self.download_path_var.get()
+        self._build_ui()
+
+    def _build_ui(self):
+        # 左側：檔案列表區
+        self.left_frame = tk.Frame(self.parent, width=210)
+        self.left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
+        self.left_frame.pack_propagate(False)
+
+        tk.Label(self.left_frame, text="影片檔案列表", font=("Microsoft JhengHei", 11, "bold")).pack(anchor="w")
+
+        folder_frame = tk.Frame(self.left_frame)
+        folder_frame.pack(fill="x", pady=3)
+        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Microsoft JhengHei", 8))
+        self.folder_entry.pack(side="left", fill="x", expand=True)
+        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
+        tk.Button(folder_frame, text="開啟", command=self._open_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
+
+        self.file_listbox = tk.Listbox(self.left_frame, font=("Microsoft JhengHei", 9), selectmode="single", activestyle="dotbox")
+        self.file_listbox.pack(fill="both", expand=True, pady=5)
+        self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
+        self.file_listbox.bind("<Double-Button-1>", self._on_file_double_click)
+
+        self.btn_refresh = tk.Button(self.left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Microsoft JhengHei", 9))
+        self.btn_refresh.pack(fill="x", pady=2)
+        
+        self.btn_add_merge = tk.Button(self.left_frame, text="➕ 加入合併清單", command=self._add_to_merge, bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 10, "bold"))
+
+        # 右側：控制區
+        self.right_frame = tk.Frame(self.parent)
+        self.right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
+
+        # 頂部子分頁切換按鈕
+        tab_selector = tk.Frame(self.right_frame)
+        tab_selector.pack(fill="x", pady=(0, 10))
+
+        self.btn_trim = tk.Button(tab_selector, text="✂️ 影片無損裁剪", font=("Microsoft JhengHei", 10, "bold"),
+                                  command=lambda: self.switch_tab("trim"), relief="flat", cursor="hand2", width=18, height=1)
+        self.btn_trim.pack(side="left", padx=2)
+
+        self.btn_merge = tk.Button(tab_selector, text="🔗 影片多檔合併", font=("Microsoft JhengHei", 10, "bold"),
+                                   command=lambda: self.switch_tab("merge"), relief="flat", cursor="hand2", width=18, height=1)
+        self.btn_merge.pack(side="left", padx=2)
+
+        # 內容容器
+        self.content_frame = tk.Frame(self.right_frame)
+        self.content_frame.pack(fill="both", expand=True)
+
+        self.trimmer_sub = VideoTrimmerSubFrame(self.content_frame, self)
+        self.merger_sub = VideoMergerSubFrame(self.content_frame, self)
+
+        self.switch_tab("trim")
+        self._refresh_list()
+
+    def _browse_folder(self):
+        folder = filedialog.askdirectory(initialdir=self.download_path_var.get())
+        if folder:
+            self._folder_path = folder
+            self._update_folder_entry(folder)
+            self._refresh_list()
+
+    def _open_folder(self):
+        folder = self._folder_path or self.download_path_var.get()
+        if folder and os.path.exists(folder):
+            os.startfile(folder)
+        else:
+            messagebox.showerror("錯誤", "找不到指定的資料夾路徑。")
+
+    def _update_folder_entry(self, path):
+        self.folder_entry.config(state="normal")
+        self.folder_entry.delete(0, tk.END)
+        self.folder_entry.insert(0, path)
+        self.folder_entry.config(state="readonly")
+
+    def _refresh_list(self):
+        folder = self._folder_path or self.download_path_var.get()
+        self._folder_path = folder
+        self._update_folder_entry(folder)
+        self.file_listbox.delete(0, tk.END)
+        if not folder or not os.path.exists(folder):
+            return
+        video_files = sorted([f for f in os.listdir(folder) if f.lower().endswith(('.mp4', '.mkv'))])
+        for f in video_files:
+            self.file_listbox.insert(tk.END, f)
+
+    def _on_file_select(self, event=None):
+        sel = self.file_listbox.curselection()
+        if not sel:
+            return
+        filename = self.file_listbox.get(sel[0])
+        full_path = os.path.join(self._folder_path, filename)
+        
+        if self.current_tab == "trim":
+            self.trimmer_sub.load_file(full_path)
+            
+    def _on_file_double_click(self, event=None):
+        sel = self.file_listbox.curselection()
+        if not sel:
+            return
+        filename = self.file_listbox.get(sel[0])
+        full_path = os.path.join(self._folder_path, filename)
+        
+        if self.current_tab == "merge":
+            self.merger_sub._add_video_from_path(full_path)
+
+    def _add_to_merge(self):
+        sel = self.file_listbox.curselection()
+        if not sel:
+            return
+        for i in sel:
+            filename = self.file_listbox.get(i)
+            full_path = os.path.join(self._folder_path, filename)
+            self.merger_sub._add_video_from_path(full_path)
+
+    def switch_tab(self, tab):
+        self.trimmer_sub._stop()
+        self.current_tab = tab
+        if tab == "trim":
+            self.btn_trim.config(bg="#1976D2", fg="white")
+            self.btn_merge.config(bg="#E0E0E0", fg="black")
+            self.btn_add_merge.pack_forget()
+            self.merger_sub.pack_forget()
+            self.trimmer_sub.pack(fill="both", expand=True)
+        else:
+            self.btn_trim.config(bg="#E0E0E0", fg="black")
+            self.btn_merge.config(bg="#1976D2", fg="white")
+            self.btn_add_merge.pack(fill="x", pady=2)
+            self.trimmer_sub.pack_forget()
+            self.merger_sub.pack(fill="both", expand=True)
+
+
+class VideoTrimmerSubFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.download_path_var = controller.download_path_var
+        self.player = MCIPlayer(alias="cyt_video_player")
+        self.current_file = None
+        self.total_ms = 0
+        self.is_playing = False
+        self.is_paused = False
+        self.start_time_str = tk.StringVar(value="0:00")
+        self.end_time_str = tk.StringVar(value="0:00")
+        self._update_job = None
+        self._seeking = False
+        self._preview_mode = False
+        self._loop_var = tk.BooleanVar(value=False)
+        self._build_ui()
+
+    def _build_ui(self):
+        right_frame = self
+
+        # 影片播放容器
+        self.video_container = tk.Frame(right_frame, bg="black", height=280)
+        self.video_container.pack(fill="x", pady=(0, 5))
+        self.video_container.pack_propagate(False)
+        self.video_label = tk.Label(self.video_container, text="請從左側選取影片進行預覽", fg="white", bg="black", font=("Microsoft JhengHei", 10))
+        self.video_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # 播放控制按鈕
+        ctrl_frame = tk.Frame(right_frame)
+        ctrl_frame.pack(anchor="w", pady=3)
+        tk.Button(ctrl_frame, text="⏮ -5s", command=lambda: self._seek_relative(-5000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="◀ -1s", command=lambda: self._seek_relative(-1000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="⏪ -0.1s", command=lambda: self._seek_relative(-100), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=1)
+        
+        self.play_btn = tk.Button(ctrl_frame, text="▶ 播放", command=self._toggle_play,
+                                  font=("Microsoft JhengHei", 11, "bold"), bg="#2196F3", fg="white", width=8, state="disabled")
+        self.play_btn.pack(side="left", padx=4)
+        
+        tk.Button(ctrl_frame, text="+0.1s ⏩", command=lambda: self._seek_relative(100), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="+1s ▶", command=lambda: self._seek_relative(1000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
+        tk.Button(ctrl_frame, text="+5s ⏭", command=lambda: self._seek_relative(5000), font=("Microsoft JhengHei", 9), width=5).pack(side="left", padx=1)
+        
+        self.time_label = tk.Label(ctrl_frame, text="00:00 / 00:00", font=("Microsoft JhengHei", 11), fg="#333")
+        self.time_label.pack(side="left", padx=10)
+
+        # Canvas 進度條
+        canvas_outer = tk.Frame(right_frame, bg="#888", pady=1)
+        canvas_outer.pack(fill="x", pady=4)
+        self.trim_canvas = tk.Canvas(canvas_outer, height=24, bg="#eee", highlightthickness=0, cursor="hand2")
+        self.trim_canvas.pack(fill="both", expand=True)
+        self.trim_canvas.bind("<ButtonPress-1>", self._canvas_click)
+        self.trim_canvas.bind("<B1-Motion>", self._canvas_drag)
+        self.trim_canvas.bind("<ButtonRelease-1>", self._canvas_release)
+        self.trim_canvas.bind("<Configure>", lambda e: self._draw_trim_canvas())
+
+        # 色彩圖例
+        legend_frame = tk.Frame(right_frame)
+        legend_frame.pack(anchor="w", pady=(1, 3))
+        for color, label in [("#81C784", "裁剪範圍"), ("#1976D2", "起點"), ("#E64A19", "終點"), ("#EF5350", "播放位置")]:
+            tk.Frame(legend_frame, bg=color, width=12, height=12).pack(side="left", padx=2)
+            tk.Label(legend_frame, text=label, font=("Microsoft JhengHei", 8), fg="#555").pack(side="left", padx=(0, 8))
+
+        ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=4)
+
+        # 裁剪設定
+        trim_lf = tk.LabelFrame(right_frame, text="🎬 裁剪設定", font=("Microsoft JhengHei", 10, "bold"), padx=10, pady=4)
+        trim_lf.pack(fill="x", pady=3)
+
+        # 預覽控制列
+        preview_row = tk.Frame(trim_lf)
+        preview_row.pack(fill="x", pady=3)
+        self.preview_btn = tk.Button(preview_row, text="▶ 播放標記區段", command=self._preview_section,
+                                     font=("Microsoft JhengHei", 9, "bold"), bg="#7B1FA2", fg="white", state="disabled", width=14)
+        self.preview_btn.pack(side="left", padx=(0, 5))
+        
+        self.preview_toggle_btn = tk.Button(preview_row, text="▶ 播放 / 暫停", command=self._preview_toggle,
+                                            font=("Microsoft JhengHei", 9, "bold"), bg="#673AB7", fg="white", state="disabled", width=12)
+        self.preview_toggle_btn.pack(side="left", padx=5)
+        
+        tk.Checkbutton(preview_row, text="🔁 循環播放", variable=self._loop_var, font=("Microsoft JhengHei", 10)).pack(side="left")
+        self.duration_label = tk.Label(preview_row, text="預計長度：0秒", font=("Microsoft JhengHei", 10, "bold"), fg="#E91E63")
+        self.duration_label.pack(side="left", padx=15)
+        ttk.Separator(trim_lf, orient="horizontal").pack(fill="x", pady=4)
+
+        # 起終點數值 Row 1 (起點)
+        start_row = tk.Frame(trim_lf)
+        start_row.pack(fill="x", pady=2)
+        tk.Label(start_row, text="起點：", font=("Microsoft JhengHei", 10), width=5).pack(side="left")
+        self.start_entry = tk.Entry(start_row, textvariable=self.start_time_str, width=10, font=("Microsoft JhengHei", 10))
+        self.start_entry.pack(side="left", padx=4)
+        tk.Button(start_row, text="◀ -0.1s", command=lambda: self._adjust('start', -0.1), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=2)
+        tk.Button(start_row, text="+0.1s ▶", command=lambda: self._adjust('start', +0.1), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=2)
+        tk.Button(start_row, text="📍 標記目前位置", command=self._mark_start, font=("Microsoft JhengHei", 9), bg="#1976D2", fg="white").pack(side="left", padx=8)
+
+        # 起終點數值 Row 2 (終點)
+        end_row = tk.Frame(trim_lf)
+        end_row.pack(fill="x", pady=2)
+        tk.Label(end_row, text="終點：", font=("Microsoft JhengHei", 10), width=5).pack(side="left")
+        self.end_entry = tk.Entry(end_row, textvariable=self.end_time_str, width=10, font=("Microsoft JhengHei", 10))
+        self.end_entry.pack(side="left", padx=4)
+        tk.Button(end_row, text="◀ -0.1s", command=lambda: self._adjust('end', -0.1), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=2)
+        tk.Button(end_row, text="+0.1s ▶", command=lambda: self._adjust('end', +0.1), font=("Microsoft JhengHei", 8), width=6).pack(side="left", padx=2)
+        tk.Button(end_row, text="📍 標記目前位置", command=self._mark_end, font=("Microsoft JhengHei", 9), bg="#E64A19", fg="white").pack(side="left", padx=8)
+
+        ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=4)
+
+        # 輸出設定
+        self.out_folder_row = tk.Frame(right_frame)
+        self.out_folder_row.pack(fill="x", pady=2)
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 9, "bold"), width=12, anchor="w").pack(side="left")
+        self.out_folder_var = tk.StringVar()
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Microsoft JhengHei", 9), state="readonly")
+        self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Microsoft JhengHei", 8)).pack(side="left")
+
+        out_frame = tk.Frame(right_frame)
+        out_frame.pack(fill="x", pady=2)
+        tk.Label(out_frame, text="新檔名：", font=("Microsoft JhengHei", 10)).pack(side="left")
+        self.out_entry = tk.Entry(out_frame, font=("Microsoft JhengHei", 9), width=30)
+        self.out_entry.pack(side="left", padx=5, fill="x", expand=True)
+        self.ext_label = tk.Label(out_frame, text=".mp4", font=("Microsoft JhengHei", 10))
+        self.ext_label.pack(side="left")
+
+        # 動作按鈕區
+        action_btn_row = tk.Frame(right_frame)
+        action_btn_row.pack(pady=8)
+        self.trim_btn = tk.Button(action_btn_row, text="✂️ 無損快速裁剪", command=self._do_trim,
+                                  font=("Microsoft JhengHei", 11, "bold"), bg="#E53935", fg="white", width=18, state="disabled")
+        self.trim_btn.pack(side="left", padx=5)
+        
+        self.extract_btn = tk.Button(action_btn_row, text="🎵 提取高品質音軌", command=self._do_extract_audio,
+                                     font=("Microsoft JhengHei", 11, "bold"), bg="#FF9800", fg="white", width=18, state="disabled")
+        self.extract_btn.pack(side="left", padx=5)
+
+        self.trim_status = tk.Label(right_frame, text="", font=("Microsoft JhengHei", 10), fg="green")
+        self.trim_status.pack()
+
+    def _browse_out_folder(self):
+        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
+        folder = filedialog.askdirectory(initialdir=initial_dir)
+        if folder:
+            is_writable = True
+            test_file = os.path.join(folder, ".write_test")
+            try:
+                with open(test_file, "w") as f:
+                    pass
+                os.remove(test_file)
+            except Exception:
+                is_writable = False
+            
+            if not is_writable:
+                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
+            else:
+                self.out_folder_var.set(folder)
+
+    def load_file(self, path):
+        folder = os.path.dirname(path)
+        is_writable = True
+        test_file = os.path.join(folder, ".write_test")
+        try:
+            with open(test_file, "w") as f:
+                pass
+            os.remove(test_file)
+        except Exception:
+            is_writable = False
+            
+        if is_writable:
+            self.out_folder_var.set(folder)
+        else:
+            self.out_folder_var.set(self.download_path_var.get())
+            
+        self._load_video(path)
+
+    def _load_video(self, path):
+        self._stop()
+        self.current_file = path
+        short_path = self.player._get_short_path(path)
+        p = f'"{short_path}"' if short_path else f'"{path}"'
+        
+        hwnd = self.video_container.winfo_id()
+        self.player._send(f'open {p} type mpegvideo alias {self.player._alias} style child parent {hwnd}')
+        self.player._send(f'set {self.player._alias} time format milliseconds')
+        self.player._is_open = True
+        
+        self.total_ms = self.player.get_length()
+        self.time_label.config(text=f"00:00 / {self._fmt(self.total_ms)}")
+        self.start_time_str.set("0:00.00")
+        self.end_time_str.set(self._fmt_time_str(self.total_ms / 1000))
+        
+        w, h = self.video_container.winfo_width(), self.video_container.winfo_height()
+        self.player._send(f'put {self.player._alias} window at 0 0 {w} {h}')
+        
+        base, ext = os.path.splitext(os.path.basename(path))
+        self.out_entry.delete(0, tk.END)
+        self.out_entry.insert(0, f"{base}_clip")
+        self.ext_label.config(text=ext)
+        self.play_btn.config(state="normal")
+        self.preview_btn.config(state="normal")
+        self.preview_toggle_btn.config(state="normal")
+        self.trim_btn.config(state="normal")
+        self.extract_btn.config(state="normal")
+        self.video_label.place_forget()
+        self._draw_trim_canvas()
+
+    def _toggle_play(self):
+        if not self.current_file: return
+        mode = self.player.get_mode()
+        if mode == "playing":
+            self.player.pause()
+            self.play_btn.config(text="▶ 播放")
+        else:
+            self.player.play()
+            self.play_btn.config(text="⏸ 暫停")
+            self._preview_mode = False 
+            self._start_update_loop()
+
+    def _stop(self):
+        self.player.close()
+        self.play_btn.config(text="▶ 播放")
+        self.preview_btn.config(text="▶ 播放標記區段")
+        self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
+        if self._update_job: self.after_cancel(self._update_job)
+        self.video_label.place(relx=0.5, rely=0.5, anchor="center")
+
+    def _start_update_loop(self):
+        if self._update_job: self.after_cancel(self._update_job)
+        self._do_update()
+
+    def _do_update(self):
+        if self.player._is_open:
+            mode = self.player.get_mode()
+            pos = self.player.get_position()
+            self.time_label.config(text=f"{self._fmt(pos)} / {self._fmt(self.total_ms)}")
+            self._draw_trim_canvas(pos)
+            
+            if self._preview_mode:
+                if mode == "playing":
+                    self.preview_toggle_btn.config(text="⏸ 暫停")
+                else:
+                    self.preview_toggle_btn.config(text="▶ 播放")
+                
+                e_ms = int(self._parse_time(self.end_time_str.get()) * 1000)
+                if pos >= e_ms:
+                    if self._loop_var.get():
+                        s_ms = int(self._parse_time(self.start_time_str.get()) * 1000)
+                        self.player.seek(s_ms)
+                        self.player._send(f'update {self.player._alias}')
+                    else:
+                        self.player.pause()
+                        self.play_btn.config(text="▶ 播放")
+                        self.preview_btn.config(text="▶ 播放標記區段")
+                        self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
+                        self._preview_mode = False
+                        return
+
+            if self.player.get_mode() == "playing":
+                self._update_job = self.after(200, self._do_update)
+            else:
+                self.play_btn.config(text="▶ 播放")
+                self.preview_btn.config(text="▶ 播放標記區段")
+                self.preview_toggle_btn.config(text="▶ 播放 / 暫停")
+                self._preview_mode = False
+                self._update_job = None
+
+    def _ms_to_x(self, ms):
+        w = self.trim_canvas.winfo_width()
+        if self.total_ms <= 0 or w <= 0: return 0
+        return int(ms / self.total_ms * w)
+
+    def _x_to_ms(self, x):
+        w = self.trim_canvas.winfo_width()
+        if self.total_ms <= 0 or w <= 0: return 0
+        ms = int(x / w * self.total_ms)
+        return max(0, min(ms, self.total_ms))
+
+    def _draw_trim_canvas(self, pos_ms=None):
+        c = self.trim_canvas
+        w = c.winfo_width()
+        h = c.winfo_height()
+        if w <= 1: return
+        c.delete("all")
+        c.create_rectangle(0, 0, w, h, fill="#d8d8d8", outline="")
+        if self.total_ms > 0:
+            s_sec = self._parse_time(self.start_time_str.get())
+            e_sec = self._parse_time(self.end_time_str.get())
+            xs = self._ms_to_x(int(s_sec * 1000))
+            xe = self._ms_to_x(int(e_sec * 1000))
+            
+            c.create_rectangle(xs, 0, xe, h, fill="#81C784", outline="")
+            
+            dur = abs(e_sec - s_sec)
+            self.duration_label.config(text=f"預計長度：{self._fmt_time_str(dur)}")
+            
+            c.create_rectangle(xs - 2, 0, xs + 2, h, fill="#1976D2", outline="")
+            c.create_oval(xs - 5, h // 2 - 5, xs + 5, h // 2 + 5, fill="#1976D2", outline="white", width=1)
+            
+            c.create_rectangle(xe - 2, 0, xe + 2, h, fill="#E64A19", outline="")
+            c.create_oval(xe - 5, h // 2 - 5, xe + 5, h // 2 + 5, fill="#E64A19", outline="white", width=1)
+            
+            if pos_ms is None:
+                pos_ms = self.player.get_position() if self.player._is_open else 0
+            xp = self._ms_to_x(pos_ms)
+            c.create_rectangle(xp - 2, 0, xp + 2, h, fill="#EF5350", outline="")
+            c.create_oval(xp - 4, 1, xp + 4, h - 1, fill="#EF5350", outline="white", width=1)
+
+    def _canvas_click(self, event):
+        if not self.player._is_open: return
+        self._seeking = True
+        ms = self._x_to_ms(event.x)
+        self.player.seek(ms)
+        self.time_label.config(text=f"{self._fmt(ms)} / {self._fmt(self.total_ms)}")
+        self._draw_trim_canvas(ms)
+        self.player._send(f'update {self.player._alias}')
+
+    def _canvas_drag(self, event):
+        if self._seeking and self.player._is_open:
+            ms = self._x_to_ms(event.x)
+            self.player.seek(ms)
+            self.time_label.config(text=f"{self._fmt(ms)} / {self._fmt(self.total_ms)}")
+            self._draw_trim_canvas(ms)
+            self.player._send(f'update {self.player._alias}')
+
+    def _canvas_release(self, event):
+        self._seeking = False
+
+    def _seek_relative(self, delta_ms):
+        if not self.player._is_open: return
+        pos = self.player.get_position()
+        new_pos = max(0, min(pos + delta_ms, self.total_ms))
+        self.player.seek(new_pos)
+        self.time_label.config(text=f"{self._fmt(new_pos)} / {self._fmt(self.total_ms)}")
+        self._draw_trim_canvas(new_pos)
+        self.player._send(f'update {self.player._alias}')
+
+    def _mark_start(self):
+        if not self.player._is_open: return
+        pos_ms = self.player.get_position()
+        self.start_time_str.set(self._fmt_time_str(pos_ms / 1000))
+        self._draw_trim_canvas()
+
+    def _mark_end(self):
+        if not self.player._is_open: return
+        pos_ms = self.player.get_position()
+        self.end_time_str.set(self._fmt_time_str(pos_ms / 1000))
+        self._draw_trim_canvas()
+
+    def _adjust(self, target, delta):
+        if target == 'start':
+            cur = self._parse_time(self.start_time_str.get())
+            val = max(0.0, round(cur + delta, 2))
+            self.start_time_str.set(self._fmt_time_str(val))
+        else:
+            cur = self._parse_time(self.end_time_str.get())
+            val = round(cur + delta, 2)
+            self.end_time_str.set(self._fmt_time_str(val))
+        self._draw_trim_canvas()
+
+    def _preview_section(self):
+        if not self.player._is_open: return
+        s = self._parse_time(self.start_time_str.get())
+        self.player.seek(int(s * 1000))
+        self._preview_mode = True
+        self.player.play()
+        self.play_btn.config(text="⏸ 暫停")
+        self.preview_toggle_btn.config(text="⏸ 暫停")
+        self._start_update_loop()
+        self.player._send(f'update {self.player._alias}')
+
+    def _preview_toggle(self):
+        if not self.player._is_open: return
+        mode = self.player.get_mode()
+        if mode == "playing":
+            self.player.pause()
+            self.play_btn.config(text="▶ 播放")
+            self.preview_toggle_btn.config(text="▶ 播放")
+        elif mode == "paused":
+            self.player.resume()
+            self.play_btn.config(text="⏸ 暫停")
+            self.preview_toggle_btn.config(text="⏸ 暫停")
+            self._preview_mode = True 
+            self._start_update_loop()
+            self.player._send(f'update {self.player._alias}')
+
+    def _do_trim(self):
+        if not self.current_file: return
+        s = self._parse_time(self.start_time_str.get())
+        e = self._parse_time(self.end_time_str.get())
+        if s >= e:
+            messagebox.showerror("錯誤", "起點必須小於終點。")
+            return
+        
+        base_out_name = self.out_entry.get().strip()
+        if not base_out_name:
+            messagebox.showerror("錯誤", "請輸入輸出檔名。")
+            return
+        
+        ext = self.ext_label.cget("text")
+        out_folder = self.out_folder_var.get() or self.download_path_var.get()
+        out_path = os.path.join(out_folder, base_out_name + ext)
+        counter = 1
+        while os.path.exists(out_path):
+            out_path = os.path.join(out_folder, f"{base_out_name}({counter}){ext}")
+            counter += 1
+            
+        self._stop()
+        self.trim_btn.config(state="disabled")
+        self.trim_status.config(text="影片無損裁剪中，請稍候...", fg="blue")
+        threading.Thread(target=self._run_ffmpeg_trim, args=(self.current_file, out_path, s, e), daemon=True).start()
+
+    def _run_ffmpeg_trim(self, in_path, out_path, start_sec, end_sec):
+        try:
+            cmd = [
+                ffmpeg_path, "-y",
+                "-ss", str(start_sec),
+                "-to", str(end_sec),
+                "-i", in_path,
+                "-c", "copy",
+                "-map", "0",
+                out_path
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+            if res.returncode == 0:
+                self.after(0, lambda: self.trim_status.config(text=f"✅ 裁剪成功：{os.path.basename(out_path)}", fg="green"))
+                self.after(0, self.controller._refresh_list)
+            else:
+                self.after(0, lambda: self.trim_status.config(text="❌ 裁剪失敗", fg="red"))
+        except Exception as ex:
+            err_msg = str(ex)
+            self.after(0, lambda: self.trim_status.config(text=f"❌ 錯誤：{err_msg}", fg="red"))
+        finally:
+            self.after(0, lambda: self.trim_btn.config(state="normal"))
+
+    def _fmt(self, ms):
+        s = int(ms) // 1000
+        return f"{s // 60:02d}:{s % 60:02d}"
+
+    def _fmt_time_str(self, sec):
+        return f"{int(sec)//60}:{sec%60:05.2f}"
+
+    def _parse_time(self, t_str):
+        try:
+            if ":" in t_str:
+                p = t_str.split(":")
+                return float(p[0])*60 + float(p[1])
+            return float(t_str)
+        except: return 0.0
+
+    def _do_extract_audio(self):
+        if not self.current_file: return
+        dialog = tk.Toplevel(self)
+        dialog.title("選擇音訊提取格式")
+        dialog.geometry("320x150")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        dialog.update_idletasks()
+        w = dialog.winfo_width()
+        h = dialog.winfo_height()
+        x = self.winfo_rootx() + (self.winfo_width() - w) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - h) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        tk.Label(dialog, text="請選擇要提取的音訊格式：", font=("Microsoft JhengHei", 10)).pack(pady=15)
+        
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(fill="x", padx=10)
+        
+        def select_format(fmt):
+            dialog.destroy()
+            self._start_audio_extraction(fmt)
+            
+        tk.Button(btn_frame, text="高品質 MP3 (320k)", bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 9, "bold"),
+                   command=lambda: select_format("mp3")).pack(side="left", expand=True, fill="x", padx=5)
+        tk.Button(btn_frame, text="無損 WAV 音軌", bg="#2196F3", fg="white", font=("Microsoft JhengHei", 9, "bold"),
+                   command=lambda: select_format("wav")).pack(side="left", expand=True, fill="x", padx=5)
+
+    def _start_audio_extraction(self, fmt):
+        base, _ = os.path.splitext(os.path.basename(self.current_file))
+        target_folder = self.out_folder_var.get() or self.download_path_var.get()
+        os.makedirs(target_folder, exist_ok=True)
+        counter = 1
+        out_filename = f"{base}.{fmt}"
+        out_path = os.path.join(target_folder, out_filename)
+        while os.path.exists(out_path):
+            out_filename = f"{base}_{counter}.{fmt}"
+            out_path = os.path.join(target_folder, out_filename)
+            counter += 1
+            
+        self.extract_btn.config(state="disabled")
+        self.trim_status.config(text=f"正在提取高品質 {fmt.upper()} 音軌...", fg="blue")
+        threading.Thread(target=self._run_ffmpeg_extract, args=(self.current_file, out_path, fmt), daemon=True).start()
+
+    def _run_ffmpeg_extract(self, in_path, out_path, fmt):
+        try:
+            if fmt == "mp3":
+                cmd = [ffmpeg_path, "-y", "-i", in_path, "-vn", "-acodec", "libmp3lame", "-ab", "320k", out_path]
+            else: 
+                cmd = [ffmpeg_path, "-y", "-i", in_path, "-vn", out_path]
+                
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode == 0:
+                self.after(0, lambda: self.trim_status.config(text=f"✅ 影音分離成功：{os.path.basename(out_path)}", fg="green"))
+                self.after(0, self.controller._refresh_list)
+            else:
+                self.after(0, lambda: self.trim_status.config(text="❌ 提取失敗", fg="red"))
+        except Exception as ex:
+            err_msg = str(ex)
+            self.after(0, lambda: self.trim_status.config(text=f"❌ 錯誤：{err_msg}", fg="red"))
+        finally:
+            self.after(0, lambda: self.extract_btn.config(state="normal"))
+
+
+class VideoMergerSubFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.download_path_var = controller.download_path_var
+        self.staged_items = []  
+        self._build_ui()
+
+    def _build_ui(self):
+        mid_frame = tk.Frame(self, width=240)
+        mid_frame.pack(side="left", fill="y", padx=5, pady=5)
+        mid_frame.pack_propagate(False)
+        
+        tk.Label(mid_frame, text="1. 合併佇列 (可微調順序)", font=("Microsoft JhengHei", 10, "bold")).pack(anchor="w")
+        
+        tk.Button(mid_frame, text="🧹 清除佇列", command=self._clear_all, bg="#757575", fg="white").pack(side="bottom", fill="x", pady=2)
+        tk.Button(mid_frame, text="🗑️ 移除選定片段", command=self._remove_item, bg="#f44336", fg="white").pack(side="bottom", fill="x", pady=2)
+        
+        btn_grid = tk.Frame(mid_frame)
+        btn_grid.pack(side="bottom", fill="x")
+        tk.Button(btn_grid, text="🔼 上移", command=lambda: self._move_item(-1), width=10).pack(side="left", padx=2, expand=True, fill="x")
+        tk.Button(btn_grid, text="🔽 下移", command=lambda: self._move_item(1), width=10).pack(side="left", padx=2, expand=True, fill="x")
+
+        self.btn_transition = tk.Button(mid_frame, text="➕ 插入文字轉場", command=self._add_transition, bg="#FFB300", fg="white", font=("Microsoft JhengHei", 10, "bold"))
+        self.btn_transition.pack(side="bottom", fill="x", pady=4)
+
+        self.merge_listbox = tk.Listbox(mid_frame, font=("Microsoft JhengHei", 9))
+        self.merge_listbox.pack(fill="both", expand=True, pady=5)
+
+        right_frame = tk.Frame(self)
+        right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=5)
+        
+        tk.Label(right_frame, text="2. 設定與合併", font=("Microsoft JhengHei", 10, "bold")).pack(anchor="w")
+
+        self.out_folder_row = tk.Frame(right_frame)
+        self.out_folder_row.pack(fill="x", pady=5)
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 10, "bold"), width=12, anchor="w").pack(side="left")
+        self.out_folder_var = tk.StringVar(value=self.download_path_var.get())
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Microsoft JhengHei", 10), state="readonly")
+        self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left")
+
+        tk.Label(right_frame, text="合併後檔名：", font=("Microsoft JhengHei", 10)).pack(anchor="w", pady=(5, 0))
+        self.out_entry = tk.Entry(right_frame, font=("Microsoft JhengHei", 10))
+        self.out_entry.pack(fill="x", pady=5)
+        self.out_entry.insert(0, "merged_video")
+
+        res_frame = tk.Frame(right_frame)
+        res_frame.pack(fill="x", pady=5)
+        tk.Label(res_frame, text="輸出解析度：", font=("Microsoft JhengHei", 10)).pack(side="left")
+        self.res_combo = ttk.Combobox(res_frame, values=["1080p (1920x1080) [推薦]", "720p (1280x720)", "保持第一部影片規格"], state="readonly", width=25)
+        self.res_combo.set("1080p (1920x1080) [推薦]")
+        self.res_combo.pack(side="left", padx=5)
+
+        hint_lbl = tk.Label(right_frame, text="💡 說明：\n1. 支援不同格式/解析度影片合併。\n2. 文字轉場會生成黑底白字轉場影片片段。\n3. 合併使用重編碼引擎，確保影音流完全對齊無縫拼接。", font=("Microsoft JhengHei", 9), fg="#666", justify="left")
+        hint_lbl.pack(anchor="w", pady=10)
+
+        self.merge_btn = tk.Button(right_frame, text="🚀 開始合併影片", command=self._do_merge, 
+                                   bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 12, "bold"), height=2)
+        self.merge_btn.pack(fill="x", pady=10)
+
+        self.progress_bar = ttk.Progressbar(right_frame, orient="horizontal", mode="determinate")
+        self.progress_bar.pack(fill="x", pady=5)
+        
+        self.status_label = tk.Label(right_frame, text="", fg="blue", font=("Microsoft JhengHei", 10, "bold"))
+        self.status_label.pack()
+
+    def _stop(self):
+        pass
+
+    def _browse_out_folder(self):
+        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
+        folder = filedialog.askdirectory(initialdir=initial_dir)
+        if folder:
+            self.out_folder_var.set(folder)
+
+    def _add_video_from_path(self, fpath):
+        fname = os.path.basename(fpath)
+        unique_alias = f"vinfo_{int(time.time()*1000)}"
+        temp_player = MCIPlayer(alias=unique_alias)
+        dur = 0
+        if temp_player.open(fpath):
+            dur = temp_player.get_length()
+            temp_player.close()
+            
+        self.staged_items.append({"type": "video", "path": fpath, "duration": dur})
+        self.merge_listbox.insert(tk.END, f"[影片] 🎬 {fname}")
+        self._update_out_filename()
+
+    def _add_transition(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("➕ 插入文字轉場片段")
+        dialog.geometry("380x250")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        dialog.update_idletasks()
+        w = dialog.winfo_width()
+        h = dialog.winfo_height()
+        x = self.winfo_rootx() + (self.winfo_width() - w) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - h) // 2
+        dialog.geometry(f"+{x}+{y}")
+
+        tk.Label(dialog, text="轉場文字 (簡約黑底白字，支援中文及多行)：", font=("Microsoft JhengHei", 9, "bold")).pack(anchor="w", padx=15, pady=(15, 2))
+        
+        text_area = tk.Text(dialog, height=4, width=45, font=("Microsoft JhengHei", 10))
+        text_area.pack(padx=15, pady=5)
+        text_area.insert("1.0", "轉場文字")
+
+        dur_row = tk.Frame(dialog)
+        dur_row.pack(fill="x", padx=15, pady=5)
+        tk.Label(dur_row, text="持續秒數 (秒)：", font=("Microsoft JhengHei", 10)).pack(side="left")
+        
+        dur_spin = tk.Spinbox(dur_row, from_=1, to=10, width=5)
+        dur_spin.delete(0, "end")
+        dur_spin.insert(0, "3")
+        dur_spin.pack(side="left")
+
+        def confirm():
+            text = text_area.get("1.0", "end-1c").strip()
+            if not text:
+                messagebox.showerror("錯誤", "轉場文字不能為空。")
+                return
+            try:
+                seconds = float(dur_spin.get())
+            except Exception:
+                seconds = 3.0
+            
+            self.staged_items.append({"type": "transition", "text": text, "duration": int(seconds * 1000)})
+            self.merge_listbox.insert(tk.END, f"[轉場] 📝 \"{text.replace('\\n', ' ')}\" ({seconds}秒)")
+            dialog.destroy()
+            self._update_out_filename()
+
+        tk.Button(dialog, text="確定插入", bg="#4CAF50", fg="white", font=("Microsoft JhengHei", 10, "bold"), command=confirm).pack(pady=10)
+
+    def _remove_item(self):
+        sel = self.merge_listbox.curselection()
+        if not sel: return
+        idx = sel[0]
+        self.staged_items.pop(idx)
+        self.merge_listbox.delete(idx)
+        self._update_out_filename()
+
+    def _clear_all(self):
+        if not self.staged_items: return
+        if messagebox.askyesno("確認", "確定要清空合併佇列嗎？"):
+            self.staged_items = []
+            self.merge_listbox.delete(0, tk.END)
+
+    def _move_item(self, direction):
+        sel = self.merge_listbox.curselection()
+        if not sel: return
+        idx = sel[0]
+        new_idx = idx + direction
+        if not (0 <= new_idx < len(self.staged_items)): return
+        
+        self.staged_items[idx], self.staged_items[new_idx] = self.staged_items[new_idx], self.staged_items[idx]
+        
+        text = self.merge_listbox.get(idx)
+        self.merge_listbox.delete(idx)
+        self.merge_listbox.insert(new_idx, text)
+        self.merge_listbox.selection_clear(0, tk.END)
+        self.merge_listbox.selection_set(new_idx)
+
+    def _update_out_filename(self):
+        for item in self.staged_items:
+            if item["type"] == "video":
+                stem = os.path.splitext(os.path.basename(item["path"]))[0]
+                self.out_entry.delete(0, tk.END)
+                self.out_entry.insert(0, f"{stem}_merged")
+                return
+        self.out_entry.delete(0, tk.END)
+        self.out_entry.insert(0, "merged_video")
+
+    def _do_merge(self):
+        if not self.staged_items: return
+        if len(self.staged_items) < 2:
+            messagebox.showerror("合併失敗", "合併佇列中至少需要有 2 個影片或轉場片段。")
+            return
+            
+        out_name = self.out_entry.get().strip()
+        if not out_name:
+            messagebox.showerror("錯誤", "請輸入合併後檔名。")
+            return
+            
+        target_folder = self.out_folder_var.get() or self.download_path_var.get()
+        os.makedirs(target_folder, exist_ok=True)
+        
+        out_ext = ".mp4"
+        for item in self.staged_items:
+            if item["type"] == "video":
+                out_ext = os.path.splitext(item["path"])[1]
+                break
+                
+        out_path = os.path.join(target_folder, out_name + out_ext)
+        counter = 1
+        base = out_name
+        while os.path.exists(out_path):
+            out_path = os.path.join(target_folder, f"{base}({counter}){out_ext}")
+            counter += 1
+            
+        self.merge_btn.config(state="disabled")
+        self.status_label.config(text="🎬 影音分析及多檔重編碼合併中...", fg="blue")
+        self.progress_bar["value"] = 0
+        
+        threading.Thread(target=self._merge_thread, args=(out_path,), daemon=True).start()
+
+    def _merge_thread(self, out_path):
+        temp_files = []
+        try:
+            out_folder = os.path.dirname(out_path)
+            res_sel = self.res_combo.get()
+            
+            width, height = 1920, 1080
+            if "720p" in res_sel:
+                width, height = 1280, 720
+            elif "保持第一部影片規格" in res_sel:
+                first_vid = None
+                for item in self.staged_items:
+                    if item["type"] == "video":
+                        first_vid = item["path"]
+                        break
+                if first_vid:
+                    try:
+                        cmd_p = [ffprobe_path, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", first_vid]
+                        import json, subprocess
+                        res_p = subprocess.run(cmd_p, capture_output=True, text=True, encoding="utf-8")
+                        p_data = json.loads(res_p.stdout)
+                        s_data = p_data.get("streams", [{}])[0]
+                        width = s_data.get("width", 1920)
+                        height = s_data.get("height", 1080)
+                    except Exception:
+                        width, height = 1920, 1080
+
+            self.after(0, lambda: self.status_label.config(text="⚙️ 第一階段：正在生成轉場片段與填補靜音軌..."))
+            
+            prepared_files = []
+            for idx, item in enumerate(self.staged_items):
+                if item["type"] == "transition":
+                    trans_mp4 = os.path.join(out_folder, f"temp_trans_{int(time.time()*1000)}_{idx}.mp4")
+                    trans_txt = os.path.join(out_folder, f"temp_trans_txt_{int(time.time()*1000)}_{idx}.txt")
+                    
+                    with open(trans_txt, "w", encoding="utf-8") as tf:
+                        tf.write(item["text"])
+                    temp_files.append(trans_txt)
+                    
+                    dur_sec = item["duration"] / 1000.0
+                    font_path = "C:/Windows/Fonts/msjh.ttc"
+                    
+                    escaped_font = font_path.replace("\\", "/").replace(":", "\\:")
+                    escaped_text = trans_txt.replace("\\", "/").replace(":", "\\:")
+                    
+                    cmd_g = [
+                        ffmpeg_path, "-y",
+                        "-f", "lavfi", "-i", f"color=c=black:s={width}x{height}:d={dur_sec}:r=30",
+                        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+                        "-filter_complex", f"[0:v]drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor=white:fontsize=40:x=(w-text_w)/2:y=(h-text_h)/2[outv]",
+                        "-map", "[outv]", "-map", "1:a",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                        "-c:a", "aac", "-shortest",
+                        trans_mp4
+                    ]
+                    subprocess.run(cmd_g, capture_output=True)
+                    prepared_files.append(trans_mp4)
+                    temp_files.append(trans_mp4)
+                else:
+                    vid_path = item["path"]
+                    cmd_probe_a = [ffprobe_path, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "json", vid_path]
+                    import json, subprocess
+                    res_a = subprocess.run(cmd_probe_a, capture_output=True, text=True, encoding="utf-8")
+                    a_data = json.loads(res_a.stdout)
+                    
+                    if not a_data.get("streams"):
+                        silent_vid = os.path.join(out_folder, f"temp_silent_{int(time.time()*1000)}_{idx}.mp4")
+                        cmd_silent = [
+                            ffmpeg_path, "-y",
+                            "-i", vid_path,
+                            "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+                            "-c:v", "copy", "-c:a", "aac", "-shortest",
+                            silent_vid
+                        ]
+                        subprocess.run(cmd_silent, capture_output=True)
+                        prepared_files.append(silent_vid)
+                        temp_files.append(silent_vid)
+                    else:
+                        prepared_files.append(vid_path)
+
+            self.after(0, lambda: self.status_label.config(text="⚙️ 第二階段：進行多檔畫質壓縮與對齊重編碼合併..."))
+            self.after(0, lambda: self.progress_bar.config(mode="indeterminate"))
+            self.after(0, lambda: self.progress_bar.start(10))
+
+            N = len(prepared_files)
+            filter_parts = []
+            for i in range(N):
+                filter_parts.append(
+                    f"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v{i}]"
+                )
+                filter_parts.append(
+                    f"[{i}:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a{i}]"
+                )
+            
+            concat_inputs = "".join(f"[v{i}][a{i}]" for i in range(N))
+            filter_parts.append(f"{concat_inputs}concat=n={N}:v=1:a=1[outv][outa]")
+            filter_complex_str = ";".join(filter_parts)
+
+            cmd_m = [ffmpeg_path, "-y"]
+            for f in prepared_files:
+                cmd_m.extend(["-i", f])
+            cmd_m.extend([
+                "-filter_complex", filter_complex_str,
+                "-map", "[outv]", "-map", "[outa]",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium", "-crf", "22",
+                "-c:a", "aac", "-b:a", "192k",
+                out_path
+            ])
+            
+            import subprocess
+            res_m = subprocess.run(cmd_m, capture_output=True, text=True)
+            self.after(0, lambda: self.progress_bar.stop())
+            self.after(0, lambda: self.progress_bar.config(mode="determinate", value=100))
+
+            if res_m.returncode == 0:
+                self.after(0, lambda: self.status_label.config(text=f"✅ 影片合併成功！儲存至：{os.path.basename(out_path)}", fg="green"))
+                self.after(0, lambda: messagebox.showinfo("成功", f"影片合併成功！儲存至：\n{os.path.basename(out_path)}"))
+                self.after(0, self.controller._refresh_list)
+            else:
+                self.after(0, lambda: self.status_label.config(text="❌ 影片合併失敗 (FFmpeg 錯誤)", fg="red"))
+                
+        except Exception as e:
+            err_msg = str(e)
+            self.after(0, lambda: self.status_label.config(text=f"❌ 錯誤: {err_msg}", fg="red"))
+        finally:
+            for tf in temp_files:
+                try:
+                    if os.path.exists(tf):
+                        os.remove(tf)
+                except Exception: pass
+            self.after(0, lambda: self.merge_btn.config(state="normal"))
+
+
+# ===========================================================================
+# VideoConverterTab：影音轉檔工具的完整 UI 類別
+# ===========================================================================
+class VideoConverterTab:
+    def __init__(self, parent, download_path_var):
+        self.parent = parent
+        self.download_path_var = download_path_var
+        self.current_file = None
+        self._folder_path = ""
+        
+        self.target_format = tk.StringVar(value="MP4")
+        self.scale_choice = tk.StringVar(value="保持原解析度")
+        self.speed_choice = tk.StringVar(value="預設速度 (Medium)")
+        
+        self._build_ui()
+
+    def _build_ui(self):
+        self.parent.pack_propagate(False)
+        # === 左側：檔案列表區 ===
+        left_frame = tk.Frame(self.parent, width=220)
+        left_frame.pack(side="left", fill="y", padx=(10, 5), pady=10)
+        left_frame.pack_propagate(False)
+
+        tk.Label(left_frame, text="待轉檔影音列表", font=("Microsoft JhengHei", 11, "bold")).pack(anchor="w")
+
+        folder_frame = tk.Frame(left_frame)
+        folder_frame.pack(fill="x", pady=3)
+        self.folder_entry = tk.Entry(folder_frame, state="readonly", font=("Microsoft JhengHei", 8))
+        self.folder_entry.pack(side="left", fill="x", expand=True)
+        tk.Button(folder_frame, text="選擇", command=self._browse_folder, font=("Microsoft JhengHei", 8)).pack(side="left", padx=2)
+
+        self.file_listbox = tk.Listbox(left_frame, font=("Microsoft JhengHei", 9), selectmode="single", activestyle="dotbox")
+        self.file_listbox.pack(fill="both", expand=True, pady=5)
+        self.file_listbox.bind("<<ListboxSelect>>", self._on_file_select)
+
+        tk.Button(left_frame, text="🔄 重新整理", command=self._refresh_list, font=("Microsoft JhengHei", 9)).pack(fill="x")
+
+        # === 右側：控制區 ===
+        right_frame = tk.Frame(self.parent)
+        right_frame.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
+
+        # 狀態與進度控制區 (固定在最底部)
+        self.progress_frame = tk.Frame(right_frame)
+        self.progress_frame.pack(side="bottom", fill="x", pady=2)
+
+        self.status_label = tk.Label(self.progress_frame, text="", font=("Microsoft JhengHei", 10, "bold"), fg="blue")
+        self.status_label.pack(pady=2)
+
+        self.progress_bar = ttk.Progressbar(self.progress_frame, orient="horizontal", mode="determinate")
+        self.progress_bar.pack(fill="x", pady=2)
+        self.progress_bar.pack_forget()
+
+        self.progress_label = tk.Label(self.progress_frame, text="", font=("Microsoft JhengHei", 9), fg="#555")
+        self.progress_label.pack(pady=2)
+        self.progress_label.pack_forget()
+
+        # 執行轉檔大按鈕 (固定在底部上方)
+        self.convert_btn = tk.Button(right_frame, text="🚀 開始影音轉檔與畫質壓縮", command=self._do_convert, font=("Microsoft JhengHei", 12, "bold"), bg="#4CAF50", fg="white", height=2, state="disabled")
+        self.convert_btn.pack(side="bottom", fill="x", pady=(5, 2))
+
+        # 滾動容器 (佔滿剩餘的上方空間)
+        scroll_container = ScrollableFrame(right_frame)
+        scroll_container.pack(side="top", fill="both", expand=True)
+        container_frame = scroll_container.scrollable_frame
+
+        # 選取影片資訊
+        self.info_lf = tk.LabelFrame(container_frame, text="🎬 已選取影音檔案", font=("Microsoft JhengHei", 10, "bold"), padx=15, pady=8)
+        self.info_lf.pack(fill="x", pady=(0, 5))
+        self.info_label = tk.Label(self.info_lf, text="請先從左側選擇要轉換的影片或音訊檔案", font=("Microsoft JhengHei", 10), fg="gray", justify="left", anchor="w", wraplength=480)
+        self.info_label.pack(fill="x")
+        
+        # DVD VOB 合併勾選框 (預設隱藏，檢測到連續 VOB 時才 pack)
+        self.merge_vobs_var = tk.BooleanVar(value=False)
+        self.merge_vobs_chk = tk.Checkbutton(self.info_lf, text="偵測到連續的 DVD VOB 檔案，是否一鍵無縫合併轉檔？", 
+                                             variable=self.merge_vobs_var, font=("Microsoft JhengHei", 9, "bold"), fg="#FF5722",
+                                             anchor="w", justify="left", wraplength=450)
+
+        # [NEW] DVD 專用多聲道與多字幕選擇區 (預設隱藏)
+        self.dvd_tracks_frame = tk.LabelFrame(container_frame, text="🔊 聲道與字幕軌道選擇 (DVD 專屬)", font=("Microsoft JhengHei", 10, "bold"), fg="#FF5722", bd=2, relief="groove", padx=15, pady=8)
+        self.dvd_audio_vars = {}
+        self.dvd_sub_vars = {}
+
+        # 轉檔參數設定
+        self.params_lf = tk.LabelFrame(container_frame, text="⚙️ 轉檔參數與畫質壓縮設定", font=("Microsoft JhengHei", 10, "bold"), padx=15, pady=10)
+        self.params_lf.pack(fill="x", pady=5)
+
+        # 目標格式
+        row1 = tk.Frame(self.params_lf)
+        row1.pack(fill="x", pady=4)
+        tk.Label(row1, text="目標輸出格式：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w").pack(side="left")
+        self.format_combo = ttk.Combobox(row1, values=["MP4 (相容性最高)", "MKV (多軌道支援)", "MP3 (高品質音軌)", "WAV (無損音軌)"], state="readonly", font=("Microsoft JhengHei", 9))
+        self.format_combo.set("MP4 (相容性最高)")
+        self.format_combo.pack(side="left", fill="x", expand=True)
+        self.format_combo.bind("<<ComboboxSelected>>", self._on_format_combo_change)
+
+        # 儲存位置設定 Row
+        self.out_folder_row = tk.Frame(self.params_lf)
+        self.out_folder_row.pack(fill="x", pady=4)
+        tk.Label(self.out_folder_row, text="儲存資料夾：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w").pack(side="left")
+        self.out_folder_var = tk.StringVar()
+        self.out_folder_entry = tk.Entry(self.out_folder_row, textvariable=self.out_folder_var, font=("Microsoft JhengHei", 10), state="readonly")
+        self.out_folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        tk.Button(self.out_folder_row, text="選擇", command=self._browse_out_folder, bg="#E91E63", fg="white", font=("Microsoft JhengHei", 9)).pack(side="left")
+
+        # 解析度降低
+        self.row2 = tk.Frame(self.params_lf)
+        self.row2.pack(fill="x", pady=4)
+        self.scale_label = tk.Label(self.row2, text="畫質壓縮/解析度：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w")
+        self.scale_label.pack(side="left")
+        self.scale_combo = ttk.Combobox(self.row2, values=["保持原解析度", "1080p (1920x1080)", "720p (1280x720) [推薦，體積減60%]", "480p (854x480) [快速壓縮]"], state="readonly", font=("Microsoft JhengHei", 9))
+        self.scale_combo.set("保持原解析度")
+        self.scale_combo.pack(side="left", fill="x", expand=True)
+
+        # 轉檔速度 (CPU Preset)
+        self.row3 = tk.Frame(self.params_lf)
+        self.row3.pack(fill="x", pady=4)
+        self.speed_label = tk.Label(self.row3, text="轉檔編碼速度：", font=("Microsoft JhengHei", 10, "bold"), width=14, anchor="w")
+        self.speed_label.pack(side="left")
+        self.speed_combo = ttk.Combobox(self.row3, values=["極速模式 (Veryfast) [速度極快，體積稍大]", "預設速度 (Medium)", "高品質模式 (Slow) [壓縮率最高，較慢]"], state="readonly", font=("Microsoft JhengHei", 9))
+        self.speed_combo.set("預設速度 (Medium)")
+        self.speed_combo.pack(side="left", fill="x", expand=True)
+
+        # 外掛字幕設定
+        self.sub_row = tk.Frame(self.params_lf)
+        self.sub_row.pack(fill="x", pady=4)
+        
+        self.merge_sub_var = tk.BooleanVar(value=False)
+        self.sub_chk = tk.Checkbutton(self.sub_row, text="🎬 合併外掛字幕 (.srt)：", variable=self.merge_sub_var, font=("Microsoft JhengHei", 10, "bold"), command=self._on_sub_chk_change)
+        self.sub_chk.pack(side="left")
+        
+        self.sub_path_var = tk.StringVar()
+        self.sub_entry = tk.Entry(self.sub_row, textvariable=self.sub_path_var, state="readonly", font=("Microsoft JhengHei", 9), width=25)
+        self.sub_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        self.sub_btn = tk.Button(self.sub_row, text="選擇 SRT", command=self._browse_srt, font=("Microsoft JhengHei", 8), state="disabled")
+        self.sub_btn.pack(side="left", padx=2)
+
+        # 轉檔說明提示
+        hint_lbl = tk.Label(self.params_lf, text="💡 提示：降低解析度（如將 1080p 轉為 720p）能大幅縮小影片檔案體積，非常適合在手機儲存與分享傳送。", font=("Microsoft JhengHei", 9), fg="#666", justify="left", wraplength=480)
+        hint_lbl.pack(fill="x", pady=(8, 0))
+
+        self._refresh_list()
+
+    def _browse_folder(self):
+        folder = filedialog.askdirectory(initialdir=self.download_path_var.get())
+        if folder:
+            self._folder_path = folder
+            self._update_folder_entry(folder)
+            self._refresh_list()
+
+    def _update_folder_entry(self, path):
+        self.folder_entry.config(state="normal")
+        self.folder_entry.delete(0, tk.END)
+        self.folder_entry.insert(0, path)
+        self.folder_entry.config(state="readonly")
+
+    def _browse_out_folder(self):
+        initial_dir = self.out_folder_var.get() or self.download_path_var.get()
+        folder = filedialog.askdirectory(initialdir=initial_dir)
+        if folder:
+            is_writable = True
+            test_file = os.path.join(folder, ".write_test")
+            try:
+                with open(test_file, "w") as f:
+                    pass
+                os.remove(test_file)
+            except Exception:
+                is_writable = False
+            
+            if not is_writable:
+                messagebox.showerror("權限錯誤", "所選資料夾為唯讀或無寫入權限，請選擇其他儲存位置。")
+            else:
+                self.out_folder_var.set(folder)
+
+    def _refresh_list(self):
+        folder = (getattr(self, '_folder_path', None) or self.download_path_var.get()) or ""
+        self._folder_path = folder
+        self._update_folder_entry(folder)
+        self.file_listbox.delete(0, tk.END)
+        if not folder or not os.path.exists(folder): return
+        
+        valid_exts = ('.mp4', '.mkv', '.avi', '.flv', '.mov', '.webm', '.ts', '.mp3', '.wav', '.m4a', '.vob', '.dat')
+        files = sorted([f for f in os.listdir(folder) if f.lower().endswith(valid_exts)])
+        for f in files: self.file_listbox.insert(tk.END, f)
+
+    def _on_file_select(self, event):
+        sel = self.file_listbox.curselection()
+        if not sel: return
+        filename = self.file_listbox.get(sel[0])
+        full_path = os.path.join(self._folder_path, filename)
+        self.current_file = full_path
+        
+        size_bytes = os.path.getsize(full_path)
+        size_mb = size_bytes / (1024 * 1024)
+        
+        self.info_label.config(text=f"📂 檔名：{filename}\n⚖️ 大小：{size_mb:.2f} MB\n📍 路徑：{full_path}", fg="#333", font=("Microsoft JhengHei", 9, "bold"))
+        self.convert_btn.config(state="normal")
+
+        is_writable = True
+        test_file = os.path.join(self._folder_path, ".write_test")
+        try:
+            with open(test_file, "w") as f:
+                pass
+            os.remove(test_file)
+        except Exception:
+            is_writable = False
+            
+        if is_writable:
+            self.out_folder_var.set(self._folder_path)
+        else:
+            self.out_folder_var.set(self.download_path_var.get())
+
+        base, _ = os.path.splitext(filename)
+        srt_name = f"{base}.srt"
+        srt_path = os.path.join(self._folder_path, srt_name)
+        if os.path.exists(srt_path):
+            self.sub_path_var.set(srt_path)
+            self.merge_sub_var.set(True)
+            self._on_sub_chk_change()
+        else:
+            self.sub_path_var.set("")
+            self.merge_sub_var.set(False)
+            self._on_sub_chk_change()
+
+        self.detected_vobs = []
+        self.merge_vobs_var.set(False)
+        self.merge_vobs_chk.pack_forget()
+        
+        self.dvd_tracks_frame.pack_forget()
+
+        filename_lower = filename.lower()
+        if filename_lower.endswith(".vob"):
+            threading.Thread(target=self._probe_dvd_tracks, args=(full_path,), daemon=True).start()
+
+            import re
+            match = re.match(r'^(vts_\d+_)(\d+)\.vob$', filename_lower)
+            if match:
+                prefix = match.group(1)
+                current_idx = int(match.group(2))
+                if current_idx > 0:
+                    vob_files = []
+                    i = 1
+                    while True:
+                        target_name = f"{prefix}{i}.vob"
+                        target_path = None
+                        try:
+                            for f in os.listdir(self._folder_path):
+                                if f.lower() == target_name:
+                                    target_path = os.path.join(self._folder_path, f)
+                                    break
+                        except Exception: pass
+                        if target_path:
+                            vob_files.append(target_path)
+                            i += 1
+                        else:
+                            break
+                            
+                    if len(vob_files) > 1:
+                        self.detected_vobs = vob_files
+                        first_name = os.path.basename(vob_files[0])
+                        last_name = os.path.basename(vob_files[-1])
+                        self.merge_vobs_chk.config(text=f"✨ 偵測到連續 DVD 影片檔案 ({first_name} ~ {last_name})，是否勾選此處進行一鍵無縫合併轉檔？")
+                        self.merge_vobs_chk.pack(fill="x", anchor="w", padx=5, pady=5)
+
+    def _probe_dvd_tracks(self, path):
+        try:
+            a_langs, s_langs = {}, {}
+            try:
+                import os, re
+                dir_name = os.path.dirname(path)
+                file_name = os.path.basename(path)
+                match = re.match(r'^(vts_(\d+))_\d+\.vob$', file_name.lower())
+                if match:
+                    vts_prefix = match.group(1).upper()
+                    ifo_name = f"{vts_prefix}_0.IFO"
+                    ifo_path = os.path.join(dir_name, ifo_name)
+                    if not os.path.exists(ifo_path):
+                        ifo_path = os.path.join(dir_name, ifo_name.lower())
+                    if os.path.exists(ifo_path):
+                        with open(ifo_path, 'rb') as f:
+                            ifo_data = f.read(2048)
+                        for idx in range(8):
+                            offset = 0x0200 + idx * 8
+                            attr = ifo_data[offset:offset+8]
+                            if len(attr) >= 8 and not (attr[0] == 0 and attr[1] == 0):
+                                lcode = attr[6:8].decode('ascii', errors='ignore').strip()
+                                if lcode and lcode.isalnum():
+                                    a_langs[idx] = lcode.strip().lower()
+                        for idx in range(32):
+                            offset = 0x0254 + idx * 6
+                            attr = ifo_data[offset:offset+6]
+                            if len(attr) >= 6 and attr != b'\x00\x00\x00\x00\x00\x00':
+                                lcode = attr[4:6].decode('ascii', errors='ignore').strip()
+                                if lcode and lcode.isalnum():
+                                    s_langs[idx] = lcode.strip().lower()
+            except Exception:
+                pass
+
+            LANG_MAP = {
+                "zh": "中文 (zh)", "zho": "中文 (zh)", "chi": "中文 (zh)",
+                "en": "英文 (en)", "eng": "英文 (en)",
+                "ja": "日文 (ja)", "jpn": "日文 (ja)",
+                "ko": "韓文 (ko)", "kor": "韓文 (ko)",
+                "fr": "法文 (fr)", "fre": "法文 (fr)", "fra": "法文 (fr)",
+                "de": "德文 (de)", "ger": "德文 (de)", "deu": "德文 (de)",
+                "es": "西班牙文 (es)", "spa": "西班牙文 (es)",
+                "it": "義大利文 (it)", "ita": "義大利文 (it)",
+                "ru": "俄文 (ru)", "rus": "俄文 (ru)",
+            }
+
+            cmd = [ffprobe_path, "-v", "error", "-show_streams", "-of", "json", path]
+            res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="ignore")
+            if res.returncode != 0: return
+            
+            import json
+            data = json.loads(res.stdout)
+            streams = data.get("streams", [])
+            
+            audios = []
+            subs = []
+            
+            audio_counter = 0
+            sub_counter = 0
+            
+            for s in streams:
+                codec_type = s.get("codec_type")
+                idx = s.get("index")
+                codec_name = s.get("codec_name", "unknown")
+                tags = s.get("tags", {})
+                lang = tags.get("language", "und").strip().lower() if tags else "und"
+                title = tags.get("title", "") if tags else ""
+                
+                if lang == "und" or not lang:
+                    if codec_type == "audio" and audio_counter in a_langs:
+                        lang = a_langs[audio_counter].strip().lower()
+                    elif codec_type == "subtitle" and sub_counter in s_langs:
+                        lang = s_langs[sub_counter].strip().lower()
+
+                if codec_type == "audio":
+                    audio_counter += 1
+                elif codec_type == "subtitle":
+                    sub_counter += 1
+                
+                lang_desc = lang
+                if lang in LANG_MAP:
+                    lang_desc = LANG_MAP[lang]
+                elif lang and lang != "und":
+                    lang_desc = f"{lang.upper()} ({lang})"
+                
+                desc = f"{codec_name}"
+                if lang_desc and lang_desc != "und":
+                    desc += f", {lang_desc}"
+                if title:
+                    desc += f" - {title}"
+                    
+                if codec_type == "audio":
+                    audios.append((idx, desc))
+                elif codec_type == "subtitle":
+                    subs.append((idx, desc))
+                    
+            self.parent.after(0, lambda: self._update_dvd_tracks_ui(audios, subs))
+        except Exception: pass
+
+    def _update_dvd_tracks_ui(self, audios, subs):
+        for widget in self.dvd_tracks_frame.winfo_children():
+            widget.destroy()
+            
+        self.dvd_audio_vars = {}
+        self.dvd_sub_vars = {}
+        
+        if not audios and not subs:
+            self.dvd_tracks_frame.pack_forget()
+            return
+            
+        self.dvd_tracks_frame.pack(fill="x", pady=5, before=self.params_lf if hasattr(self, 'params_lf') else None)
+        
+        if audios:
+            tk.Label(self.dvd_tracks_frame, text="🔊 選擇要保留的音軌 (聲道)：", font=("Microsoft JhengHei", 9, "bold")).pack(anchor="w", pady=(0, 2))
+            for idx, desc in audios:
+                var = tk.BooleanVar(value=(len(self.dvd_audio_vars) == 0)) 
+                self.dvd_audio_vars[idx] = var
+                cb = tk.Checkbutton(self.dvd_tracks_frame, text=f"聲道 {idx} ({desc})", variable=var, font=("Microsoft JhengHei", 9))
+                cb.pack(anchor="w", padx=10)
+                
+        if subs:
+            tk.Label(self.dvd_tracks_frame, text="💬 選擇要保留的字幕軌：", font=("Microsoft JhengHei", 9, "bold")).pack(anchor="w", pady=(5, 2))
+            for idx, desc in subs:
+                var = tk.BooleanVar(value=False)
+                self.dvd_sub_vars[idx] = var
+                cb = tk.Checkbutton(self.dvd_tracks_frame, text=f"字幕 {idx} ({desc})", variable=var, font=("Microsoft JhengHei", 9))
+                cb.pack(anchor="w", padx=10)
+
+    def _on_format_combo_change(self, event):
+        fmt = self.format_combo.get()
+        if "MP3" in fmt or "WAV" in fmt:
+            self.row2.pack_forget()
+            self.row3.pack_forget()
+            self.sub_row.pack_forget()
+        else:
+            self.row2.pack(fill="x", pady=5)
+            self.row3.pack(fill="x", pady=5)
+            self.sub_row.pack(fill="x", pady=5)
+
+    def _on_sub_chk_change(self):
+        state = "normal" if self.merge_sub_var.get() else "disabled"
+        self.sub_btn.config(state=state)
+        if self.merge_sub_var.get() and not self.sub_path_var.get():
+            self._browse_srt()
+
+    def _browse_srt(self):
+        initial_dir = self._folder_path or self.download_path_var.get()
+        f = filedialog.askopenfilename(
+            initialdir=initial_dir,
+            filetypes=[("字幕檔案", "*.srt"), ("所有檔案", "*.*")]
+        )
+        if f:
+            self.sub_path_var.set(f)
+            self.merge_sub_var.set(True)
+            self._on_sub_chk_change()
+
+    def _escape_ffmpeg_path(self, path):
+        p = path.replace("\\", "/")
+        p = p.replace(":", "\\:")
+        return p
+
+    def _get_video_duration(self, file_path):
+        try:
+            cmd = [ffprobe_path, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file_path]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            return float(res.stdout.strip())
+        except: return 0.0
+
+    def _do_convert(self):
+        if not self.current_file: return
+        
+        in_path = self.current_file
+        target_folder = self.out_folder_var.get() or self.download_path_var.get()
+        os.makedirs(target_folder, exist_ok=True)
+            
+        is_merge = getattr(self, 'detected_vobs', None) and self.merge_vobs_var.get()
+        
+        if is_merge:
+            first_vob = self.detected_vobs[0]
+            last_vob = self.detected_vobs[-1]
+            base = f"{os.path.splitext(os.path.basename(first_vob))[0]}_to_{os.path.splitext(os.path.basename(last_vob))[0]}"
+        else:
+            base, _ = os.path.splitext(os.path.basename(in_path))
+        
+        fmt_sel = self.format_combo.get()
+        if "MP4" in fmt_sel:
+            out_ext = ".mp4"
+            has_dvdsub_selected = any(var.get() for var in self.dvd_sub_vars.values())
+            if has_dvdsub_selected:
+                if not messagebox.askyesno("相容性警告", "MP4 格式不支援 VOB 原生 DVD 點陣字幕 (dvdsub)。\n強烈建議選擇「MKV」格式以完美保留字幕。\n\n是否仍要以 MP4 格式轉檔？(字幕可能會遺失或無法播放)"):
+                    return
+        elif "MKV" in fmt_sel:
+            out_ext = ".mkv"
+        elif "MP3" in fmt_sel:
+            out_ext = ".mp3"
+        else:
+            out_ext = ".wav"
+            
+        out_name = f"{base}_converted{out_ext}"
+        out_path = os.path.join(target_folder, out_name)
+        
+        base_out = f"{base}_converted"
+        counter = 1
+        while os.path.exists(out_path):
+            out_path = os.path.join(target_folder, f"{base_out}({counter}){out_ext}")
+            counter += 1
+            
+        self.convert_btn.config(state="disabled")
+        self.status_label.config(text="🎬 影音轉檔壓縮中，這可能需要幾分鐘，請稍候...", fg="blue")
+            
+        self.progress_bar['value'] = 0
+        self.progress_label.config(text="正在分析影音結構，請稍候...")
+        
+        vobs = self.detected_vobs if is_merge else None
+        threading.Thread(target=self._run_ffmpeg_convert, args=(in_path, out_path, fmt_sel, vobs), daemon=True).start()
+
+    def _run_ffmpeg_convert(self, in_path, out_path, fmt_sel, vob_list=None):
+        try:
+            if vob_list:
+                total_seconds = sum(self._get_video_duration(p) for p in vob_list)
+            else:
+                total_seconds = self._get_video_duration(in_path)
+                
+            if total_seconds > 0:
+                self.parent.after(0, lambda: self.progress_bar.pack(fill="x", pady=5))
+                self.parent.after(0, lambda: self.progress_label.pack(pady=2))
+            
+            if vob_list:
+                vob_names = [os.path.basename(p) for p in vob_list]
+                concat_str = "concat:" + "|".join(vob_names)
+                cmd = [ffmpeg_path, "-y", "-i", concat_str]
+            else:
+                cmd = [ffmpeg_path, "-y", "-i", in_path]
+            
+            if "MP3" in fmt_sel:
+                cmd += ["-vn", "-acodec", "libmp3lame", "-ab", "320k", out_path]
+            elif "WAV" in fmt_sel:
+                cmd += ["-vn", out_path]
+            else:
+                scale = self.scale_combo.get()
+                vf_args = []
+                
+                if "1080p" in scale:
+                    vf_args.append("scale=-2:1080")
+                elif "720p" in scale:
+                    vf_args.append("scale=-2:720")
+                elif "480p" in scale:
+                    vf_args.append("scale=-2:480")
+                
+                speed = self.speed_combo.get()
+                preset_val = "medium"
+                if "極速" in speed:
+                    preset_val = "veryfast"
+                elif "高品質" in speed:
+                    preset_val = "slow"
+                    
+                is_vob = in_path.lower().endswith(".vob") or (vob_list and vob_list[0].lower().endswith(".vob"))
+
+                if is_vob:
+                    cmd += ["-map", "0:v:0"]
+                    has_audio_map = False
+                    for idx, var in self.dvd_audio_vars.items():
+                        if var.get():
+                            cmd += ["-map", f"0:{idx}"]
+                            has_audio_map = True
+                    if not has_audio_map:
+                        cmd += ["-map", "0:a?"]
+                    for idx, var in self.dvd_sub_vars.items():
+                        if var.get():
+                            cmd += ["-map", f"0:{idx}"]
+                            
+                    if "MKV" in fmt_sel:
+                        cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "copy", "-c:s", "copy"]
+                    else: 
+                        cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "aac", "-b:a", "192k"]
+                        has_sub_checked = any(var.get() for var in self.dvd_sub_vars.values())
+                        if has_sub_checked:
+                            cmd += ["-c:s", "mov_text"]
+                            
+                    if vf_args:
+                        cmd += ["-vf", ",".join(vf_args)]
+                    cmd.append(out_path)
+                else:
+                    if self.merge_sub_var.get() and self.sub_path_var.get():
+                        sub_path = self.sub_path_var.get()
+                        if os.path.exists(sub_path):
+                            escaped_sub = self._escape_ffmpeg_path(sub_path)
+                            vf_args.append(f"subtitles='{escaped_sub}'")
+                    
+                    if vf_args:
+                        cmd += ["-vf", ",".join(vf_args)]
+                        
+                    cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "aac", "-b:a", "192k", out_path]
+                
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                bufsize=1,
+                cwd=self._folder_path,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            
+            import re
+            time_pattern = re.compile(r'time=(\d+):(\d+):(\d+\.\d+)')
+            
+            while True:
+                line = process.stdout.readline()
+                if not line: break
+                
+                match = time_pattern.search(line)
+                if match and total_seconds > 0:
+                    hours = int(match.group(1))
+                    minutes = int(match.group(2))
+                    seconds = float(match.group(3))
+                    current_seconds = hours * 3600 + minutes * 60 + seconds
+                    percent = min(100, int((current_seconds / total_seconds) * 100))
+                    
+                    self.parent.after(0, lambda p=percent: self._update_progress(p))
+                    
+            process.wait()
+            
+            if process.returncode == 0:
+                self.parent.after(0, lambda: self._conversion_complete(out_path))
+            else:
+                self.parent.after(0, lambda: self._conversion_failed())
+        except Exception as e:
+            err_msg = str(e)
+            self.parent.after(0, lambda: messagebox.showerror("轉檔錯誤", f"影音轉檔時發生錯誤：{err_msg}"))
+            self.parent.after(0, lambda: self.status_label.config(text=f"❌ 錯誤: {err_msg}", fg="red"))
+        finally:
+            self.parent.after(0, lambda: self.convert_btn.config(state="normal"))
+
+    def _update_progress(self, percent):
+        self.progress_bar['value'] = percent
+        self.progress_label.config(text=f"已完成：{percent}%")
+        self.status_label.config(text=f"🎬 影音轉檔壓縮中，目前進度：{percent}%", fg="blue")
+
+    def _conversion_complete(self, out_path):
+        self.status_label.config(text="✅ 影音轉檔與畫質壓縮成功！", fg="green")
+        self.progress_bar['value'] = 100
+        self.progress_label.config(text="已完成：100%")
+        messagebox.showinfo("成功", f"影音格式轉換與畫質壓縮完成！\n\n儲存於：\n{os.path.basename(out_path)}")
+        self._refresh_list()
+
+    def _conversion_failed(self):
+        self.status_label.config(text="❌ 影音轉檔失敗，請確認編碼設定！", fg="red")
+        messagebox.showerror("轉檔失敗", "FFmpeg 在轉檔時發生錯誤，請確認影片來源或調整解析度。")
+
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = YouTubeDownloaderGUI(root)
     root.mainloop()
-

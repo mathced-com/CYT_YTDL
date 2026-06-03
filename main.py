@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.3.7"
+APP_VERSION = "2.4.0"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 # ===========================================================================
@@ -4161,6 +4161,16 @@ class VideoConverterTab:
         self.sub_btn = tk.Button(self.sub_row, text="選擇 SRT", command=self._browse_srt, font=("Microsoft JhengHei", 8), state="disabled")
         self.sub_btn.pack(side="left", padx=2)
 
+        # 外掛字幕樣式設定
+        self.sub_style_row = tk.Frame(self.params_lf)
+        self.sub_style_row.pack(fill="x", pady=4)
+        
+        self.sub_style_label = tk.Label(self.sub_style_row, text="   └ 字幕字體與樣式：", font=("Microsoft JhengHei", 9, "bold"))
+        self.sub_style_label.pack(side="left")
+        self.sub_style_var = tk.StringVar(value="黃字黑框")
+        self.sub_style_combo = ttk.Combobox(self.sub_style_row, textvariable=self.sub_style_var, values=["黃字黑框", "白字黑框"], state="disabled", width=12, font=("Microsoft JhengHei", 9))
+        self.sub_style_combo.pack(side="left", padx=5)
+
         # 轉檔說明提示
         hint_lbl = tk.Label(self.params_lf, text="💡 提示：降低解析度（如將 1080p 轉為 720p）能大幅縮小影片檔案體積，非常適合在手機儲存與分享傳送。", font=("Microsoft JhengHei", 9), fg="#666", justify="left", wraplength=480)
         hint_lbl.pack(fill="x", pady=(8, 0))
@@ -4430,6 +4440,9 @@ class VideoConverterTab:
     def _on_sub_chk_change(self):
         state = "normal" if self.merge_sub_var.get() else "disabled"
         self.sub_btn.config(state=state)
+        combo_state = "readonly" if self.merge_sub_var.get() else "disabled"
+        if hasattr(self, 'sub_style_combo'):
+            self.sub_style_combo.config(state=combo_state)
         if self.merge_sub_var.get() and not self.sub_path_var.get():
             self._browse_srt()
 
@@ -4546,7 +4559,7 @@ class VideoConverterTab:
             hex_colors = []
             for i in range(16):
                 chunk = clut_data[i*4 : (i+1)*4]
-                _, y, cr, cb = struct.unpack(">BBBB", chunk)
+                _, y, cb, cr = struct.unpack(">BBBB", chunk)
                 
                 # YCbCr 轉 RGB (採用 SD 影片 ITU-R BT.601 標準公式)
                 r = 1.164 * (y - 16) + 1.596 * (cr - 128)
@@ -4601,6 +4614,11 @@ class VideoConverterTab:
                 ifo_path = self._get_matching_ifo(in_path)
                 if ifo_path and os.path.exists(ifo_path):
                     palette_str = self._extract_ifo_palette(ifo_path)
+                
+                # 若勾選了字幕且有對應的 IFO 調色盤，必須將 -palette 置於 -i 之前才能生效
+                has_sub_checked_all = any(var.get() for var in self.dvd_sub_vars.values())
+                if has_sub_checked_all and palette_str:
+                    cmd += ["-palette", palette_str]
             
             if vob_list:
                 vob_names = [os.path.basename(p) for p in vob_list]
@@ -4633,6 +4651,17 @@ class VideoConverterTab:
                     
                 is_vob = in_path.lower().endswith(".vob") or (vob_list and vob_list[0].lower().endswith(".vob"))
 
+                if self.merge_sub_var.get() and self.sub_path_var.get():
+                    sub_path = self.sub_path_var.get()
+                    if os.path.exists(sub_path):
+                        escaped_sub = self._escape_ffmpeg_path(sub_path)
+                        style_sel = self.sub_style_var.get()
+                        if "黃" in style_sel:
+                            style_str = "Fontname=Microsoft JhengHei,Fontsize=18,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2"
+                        else:
+                            style_str = "Fontname=Microsoft JhengHei,Fontsize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2"
+                        vf_args.append(f"subtitles='{escaped_sub}':force_style='{style_str}'")
+
                 if is_vob:
                     cmd += ["-map", "0:v:0"]
                     has_audio_map = False
@@ -4647,7 +4676,14 @@ class VideoConverterTab:
                             cmd += ["-map", f"0:{idx}"]
                             
                     if "MKV" in fmt_sel:
-                        cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "copy", "-c:s", "copy"]
+                        cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "copy"]
+                        has_sub_checked = any(var.get() for var in self.dvd_sub_vars.values())
+                        if has_sub_checked:
+                            # 若勾選了字幕軌，必須將 -c:s 設為 dvdsub（重新編碼）而非 copy，
+                            # 這樣 FFmpeg 的 dvdsub 解碼器才會在 -palette 的加持下正確解碼並寫入 MKV 容器的 CodecPrivate 中
+                            cmd += ["-c:s", "dvdsub"]
+                        else:
+                            cmd += ["-c:s", "copy"]
                     else: 
                         cmd += ["-c:v", "libx264", "-preset", preset_val, "-crf", "22", "-c:a", "aac", "-b:a", "192k"]
                         has_sub_checked = any(var.get() for var in self.dvd_sub_vars.values())
@@ -4657,18 +4693,8 @@ class VideoConverterTab:
                     if vf_args:
                         cmd += ["-vf", ",".join(vf_args)]
                         
-                    has_sub_checked_all = any(var.get() for var in self.dvd_sub_vars.values())
-                    if has_sub_checked_all and palette_str:
-                        cmd += ["-palette", palette_str]
-                        
                     cmd.append(out_path)
                 else:
-                    if self.merge_sub_var.get() and self.sub_path_var.get():
-                        sub_path = self.sub_path_var.get()
-                        if os.path.exists(sub_path):
-                            escaped_sub = self._escape_ffmpeg_path(sub_path)
-                            vf_args.append(f"subtitles='{escaped_sub}'")
-                    
                     if vf_args:
                         cmd += ["-vf", ",".join(vf_args)]
                         

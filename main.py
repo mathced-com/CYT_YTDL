@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 import yt_dlp
 import threading
 import os
@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 # ===========================================================================
@@ -764,8 +764,6 @@ class YouTubeDownloaderGUI:
                                 return
                             except Exception as e:
                                 messagebox.showerror("錯誤", f"替換檔案失敗，請檢查權限或嘗試手動更新：\n{e}")
-                            except Exception as e:
-                                messagebox.showerror("錯誤", f"替換檔案失敗，請檢查權限：\n{e}")
                                 self.update_progress_ui(0, "更新失敗", "red")
                         else:
                             messagebox.showinfo("開發者模式", "您目前在開發環境下，請手動更新程式碼即可。")
@@ -877,6 +875,11 @@ class YouTubeDownloaderGUI:
             'socket_timeout': 15,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             'logger': CancelLogger(self),
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web']
+                }
+            },
         }
         
         # 抖音額外優化 (深度偽裝)
@@ -937,10 +940,10 @@ class YouTubeDownloaderGUI:
                 
                 if total > 50:
                     def ask_playlist_action():
-                        # 建立自定義彈窗以支援「1」與「2」按鈕
+                        # 建立自定義彈窗以支援「1」、「2」、「3」與「取消」按鈕
                         dialog = tk.Toplevel(self.root)
                         dialog.title("播放清單處理方式")
-                        dialog.geometry("450x250")
+                        dialog.geometry("500x280")
                         dialog.resizable(False, False)
                         dialog.transient(self.root)
                         dialog.grab_set()
@@ -951,28 +954,61 @@ class YouTubeDownloaderGUI:
                         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
                         dialog.geometry(f"+{x}+{y}")
 
-                        msg = f"偵測到龐大的播放清單 (共 {total} 部影片)！\n\n請選擇後續動作：\n\n【 1 】載入前 50 筆清單讓我手動勾選。\n【 2 】分頁顯示全部清單進行勾選。\n【取消】取消解析。"
-                        tk.Label(dialog, text=msg, justify="left", font=("Microsoft JhengHei", 11), padx=20, pady=20).pack()
+                        msg = (
+                            f"偵測到龐大的播放清單 (共 {total} 部影片)！\n\n"
+                            "請選擇後續動作：\n\n"
+                            "【 1 】載入前 50 筆清單讓我手動勾選。\n"
+                            f"【 2 】分頁顯示全部清單 (共 {total} 部)。\n"
+                            "【 3 】自訂載入前幾筆 (自行輸入筆數)。\n"
+                            "【 4 】取消解析。"
+                        )
+                        tk.Label(dialog, text=msg, justify="left", font=("Microsoft JhengHei", 10), padx=25, pady=15).pack(anchor="w")
 
                         btn_frame = tk.Frame(dialog)
-                        btn_frame.pack(side="bottom", pady=20)
+                        btn_frame.pack(side="bottom", pady=15)
 
                         def on_choice(choice):
-                            dialog.destroy()
-                            if choice in [1, 2]:
-                                if choice == 1:
-                                    self.playlist_all_entries = self.playlist_all_entries[:50]
-                                    self.playlist_all_vars = self.playlist_all_vars[:50]
-                                    self.playlist_status_labels = self.playlist_status_labels[:50]
+                            if choice == 1:
+                                dialog.destroy()
+                                count = min(50, total)
+                                self.playlist_all_entries = self.playlist_all_entries[:count]
+                                self.playlist_all_vars = self.playlist_all_vars[:count]
+                                self.playlist_status_labels = self.playlist_status_labels[:count]
                                 self.root.after(0, lambda: self.show_playlist(0))
+                            elif choice == 2:
+                                dialog.destroy()
+                                self.root.after(0, lambda: self.show_playlist(0))
+                            elif choice == 3:
+                                custom_count = simpledialog.askinteger(
+                                    "自訂載入筆數", 
+                                    f"請輸入要載入的前幾筆數量 (1 ~ {total})：", 
+                                    parent=dialog, 
+                                    minvalue=1, 
+                                    maxvalue=total, 
+                                    initialvalue=min(100, total)
+                                )
+                                if custom_count is not None:
+                                    dialog.destroy()
+                                    self.playlist_all_entries = self.playlist_all_entries[:custom_count]
+                                    self.playlist_all_vars = self.playlist_all_vars[:custom_count]
+                                    self.playlist_status_labels = self.playlist_status_labels[:custom_count]
+                                    self.root.after(0, lambda: self.show_playlist(0))
                             else:
+                                dialog.destroy()
                                 self.update_progress_ui(0, "已取消解析", "blue")
                                 self.analyze_btn.config(state="normal")
                                 self.title_label.config(text="請輸入網址並點選「解析網址」")
 
-                        tk.Button(btn_frame, text=" 1 ", width=10, command=lambda: on_choice(1), font=("Microsoft JhengHei", 10, "bold"), bg="#2196F3", fg="white").pack(side="left", padx=10)
-                        tk.Button(btn_frame, text=" 2 ", width=10, command=lambda: on_choice(2), font=("Microsoft JhengHei", 10, "bold"), bg="#4CAF50", fg="white").pack(side="left", padx=10)
-                        tk.Button(btn_frame, text="取消", width=10, command=lambda: on_choice(0)).pack(side="left", padx=10)
+                        tk.Button(btn_frame, text=" 1. 前50筆 ", width=10, command=lambda: on_choice(1), font=("Microsoft JhengHei", 10, "bold"), bg="#2196F3", fg="white").pack(side="left", padx=6)
+                        tk.Button(btn_frame, text=" 2. 全部 ", width=10, command=lambda: on_choice(2), font=("Microsoft JhengHei", 10, "bold"), bg="#4CAF50", fg="white").pack(side="left", padx=6)
+                        tk.Button(btn_frame, text=" 3. 前幾筆 ", width=10, command=lambda: on_choice(3), font=("Microsoft JhengHei", 10, "bold"), bg="#FF9800", fg="white").pack(side="left", padx=6)
+                        tk.Button(btn_frame, text=" 4. 取消 ", width=10, command=lambda: on_choice(0), font=("Microsoft JhengHei", 10)).pack(side="left", padx=6)
+
+                        dialog.bind("1", lambda e: on_choice(1))
+                        dialog.bind("2", lambda e: on_choice(2))
+                        dialog.bind("3", lambda e: on_choice(3))
+                        dialog.bind("4", lambda e: on_choice(0))
+                        dialog.bind("<Escape>", lambda e: on_choice(0))
 
                     self.root.after(0, ask_playlist_action)
                 else:
@@ -1441,6 +1477,11 @@ class YouTubeDownloaderGUI:
             }
             
         ydl_opts['noplaylist'] = True
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['android', 'web']
+            }
+        }
 
         # 定義單個項目的下載執行函數，回傳 (idx, success_status)
         def download_single_item(item_info):
@@ -1513,6 +1554,22 @@ class YouTubeDownloaderGUI:
                         self.root.after(0, lambda: lbl.config(text="✅ 已完成", fg="green"))
                 if not self.is_playlist:
                     self._downloaded_filepath = filepath
+                    
+                # 下載成功後，主動檢查並清理該影片先前中斷或不同格式遺留的 .part 暫存檔
+                try:
+                    vid_id = download_info.get('id') if download_info else None
+                    if vid_id and os.path.exists(save_dir):
+                        for item_name in os.listdir(save_dir):
+                            if vid_id in item_name and (item_name.endswith('.part') or item_name.endswith('.ytdl')):
+                                part_file = os.path.join(save_dir, item_name)
+                                try:
+                                    if os.path.isfile(part_file):
+                                        os.remove(part_file)
+                                except Exception:
+                                    pass
+                except Exception:
+                    pass
+
                 return idx, True
             else:
                 # 標記為「失敗」
@@ -1566,8 +1623,15 @@ class YouTubeDownloaderGUI:
                     self.root.after(0, lambda: self.update_progress_ui(0, f"開始依章節分割 ({len(chapters_copy)} 個章節)...", "purple"))
                     self._split_by_chapters(filepath_copy, chapters_copy, title_copy, save_dir)
                 else:
-                    self.root.after(0, lambda: self.update_progress_ui(100.0, "所有任務皆已處理完成！", "green"))
-                    self.root.after(0, lambda: messagebox.showinfo("成功", f"全部下載完畢！\n共成功下載 {success_count} / {total} 部影音。\n儲存至：\n{save_dir}"))
+                    if success_count == total:
+                        self.root.after(0, lambda: self.update_progress_ui(100.0, f"所有任務皆已處理完成！({success_count}/{total})", "green"))
+                        self.root.after(0, lambda: messagebox.showinfo("成功", f"全部下載完畢！\n共成功下載 {success_count} / {total} 部影音。\n儲存至：\n{save_dir}"))
+                    elif success_count > 0:
+                        self.root.after(0, lambda: self.update_progress_ui(100.0, f"下載處理完畢：部分成功 ({success_count}/{total})", "orange"))
+                        self.root.after(0, lambda: messagebox.showwarning("部分完成", f"下載處理完畢！\n共成功下載 {success_count} / {total} 部影音。\n（部分項目下載失敗，請檢查網路或稍後重試）\n儲存至：\n{save_dir}"))
+                    else:
+                        self.root.after(0, lambda: self.update_progress_ui(0, f"下載失敗 (0/{total})", "red"))
+                        self.root.after(0, lambda: messagebox.showerror("下載失敗", f"所有選取的 {total} 部影音皆下載失敗！\n\n可能原因：\n1. YouTube 串流加密限制 (403 Forbidden)\n2. 影片有版權或地區限制\n3. 網路連線異常"))
                     
         except Exception as e:
             err_str = str(e)

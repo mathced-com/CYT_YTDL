@@ -43,9 +43,9 @@ def convert_md_to_txt(md_path, txt_path):
         content = re.sub(r'> \[!IMPORTANT\]', '【重要聲明】', content)
         content = re.sub(r'> \[!NOTE\]', '【備註】', content)
         content = re.sub(r'> \[!TIP\]', '【提示】', content)
-        content = re.sub(r'# ', '', content)
-        content = re.sub(r'## ', '■ ', content)
         content = re.sub(r'### ', '  - ', content)
+        content = re.sub(r'## ', '■ ', content)
+        content = re.sub(r'# ', '', content)
         content = re.sub(r'\*\*', '', content)
         
         with open(txt_path, "w", encoding="utf-8") as f:

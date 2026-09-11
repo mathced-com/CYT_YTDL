@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.4.2"
+APP_VERSION = "2.4.3"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 # ===========================================================================
@@ -1926,27 +1926,32 @@ class YouTubeDownloaderGUI:
             ))
 
     def open_help_dialog(self):
-        txt_path = os.path.join(self.app_dir, "使用說明.txt")
-        md_path = os.path.join(self.app_dir, "使用說明.md")
+        # 尋找說明檔優先順序：
+        # 1. 外部目錄的使用說明.txt（手動解壓縮或自訂）
+        # 2. 外部目錄的使用說明.md（開發環境）
+        # 3. 內嵌於 EXE (sys._MEIPASS) 的使用說明.txt（綠色單檔模式）
+        # 4. 內嵌於 EXE 的使用說明.md
+        candidates = [
+            os.path.join(self.app_dir, "使用說明.txt"),
+            os.path.join(self.app_dir, "使用說明.md"),
+            self.resource_path("使用說明.txt"),
+            self.resource_path("使用說明.md"),
+        ]
         
         content = ""
-        # 優先讀取 txt 說明，若不存在則嘗試讀取 md 說明 (便於開發與打包環境相容)
-        if os.path.exists(txt_path):
-            try:
-                with open(txt_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-            except Exception as e:
-                messagebox.showerror("讀取失敗", f"讀取「使用說明.txt」失敗：{e}")
-                return
-        elif os.path.exists(md_path):
-            try:
-                with open(md_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-            except Exception as e:
-                messagebox.showerror("讀取失敗", f"讀取「使用說明.md」失敗：{e}")
-                return
-        else:
-            messagebox.showerror("找不到說明檔", "在程式目錄中找不到「使用說明.txt」或「使用說明.md」檔案。")
+        for path in candidates:
+            if path and os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        read_text = f.read()
+                    if read_text and read_text.strip():
+                        content = read_text
+                        break
+                except Exception:
+                    continue
+        
+        if not content.strip():
+            messagebox.showerror("找不到說明檔", "在程式目錄與內建模組中均找不到「使用說明.txt」或「使用說明.md」檔案。")
             return
             
         # 建立使用說明 Toplevel 視窗

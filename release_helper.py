@@ -115,7 +115,8 @@ def main():
                     md_content = re.sub(r'Version [0-9.]+', f'Version {new_version}', md_content)
                     with open("使用說明.md", "w", encoding="utf-8") as f:
                         f.write(md_content)
-                print("      [OK] 版本號已更新。")
+                    convert_md_to_txt("使用說明.md", "使用說明.txt")
+                print("      [OK] 版本號已更新 (含 使用說明.md 與 使用說明.txt)。")
                 commit_version = new_version
             except Exception as e:
                 print(f"更新版本號失敗: {e}")
@@ -175,20 +176,30 @@ def main():
         input("請按 Enter 鍵結束...")
         return
 
-    print("\n[3/6] 正在打包成執行檔 (這需要 1~2 分鐘，請耐心等候)...")
-    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed", "--icon=icon.ico", "--add-data", "icon.ico;.", "--name", "CYT_YTDL", "main.py"])
+    print("\n[3/6] 正在同步產生文字版：使用說明.txt...")
+    os.makedirs("dist", exist_ok=True)
+    txt_path = os.path.join("dist", "使用說明.txt")
+    convert_md_to_txt("使用說明.md", "使用說明.txt")
+    convert_md_to_txt("使用說明.md", txt_path)
+
+    print("\n[3.3/6] 正在打包成執行檔 (含內嵌最新使用說明，需 1~2 分鐘)...")
+    subprocess.run([
+        sys.executable, "-m", "PyInstaller", 
+        "--noconfirm", "--onefile", "--windowed", 
+        "--icon=icon.ico", 
+        "--add-data", "icon.ico;.", 
+        "--add-data", "使用說明.txt;.", 
+        "--name", "CYT_YTDL", 
+        "main.py"
+    ])
     
     exe_path = os.path.join("dist", "CYT_YTDL.exe")
     zip_path = os.path.join("dist", "CYT_YTDL.zip")
-    txt_path = os.path.join("dist", "使用說明.txt")
     
     if not os.path.exists(exe_path):
         print(f"\n[Error] 打包失敗，找不到 {exe_path}")
         input("請按 Enter 鍵結束...")
         return
-
-    print("\n[3.3/6] 正在同步產生文字版：使用說明.txt...")
-    convert_md_to_txt("使用說明.md", txt_path)
 
     print("\n[3.5/6] 正在將執行檔與程式說明壓縮為 ZIP...")
     try:

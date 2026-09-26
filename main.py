@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.4.3"
+APP_VERSION = "2.4.4"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 # ===========================================================================
@@ -592,15 +592,148 @@ class YouTubeDownloaderGUI:
             messagebox.showinfo("提示", "您目前使用的是免安裝執行檔版本，yt-dlp 下載核心已直接整合於主程式中。\n\n如需更新下載核心，請直接點選旁邊的「檢查主程式更新」按鈕即可！")
             return
             
-        self.update_progress_ui(0, "正在更新 yt-dlp... 請稍候", "orange")
-        def run_update():
-            result = os.system(f"{sys.executable} -m pip install -U yt-dlp")
-            if result == 0:
-                self.root.after(0, lambda: messagebox.showinfo("更新成功", "yt-dlp 已更新至最新版！"))
-                self.root.after(0, lambda: self.update_progress_ui(0, "準備就緒", "blue"))
-            else:
-                self.root.after(0, lambda: self.update_progress_ui(0, "更新失敗", "red"))
-        threading.Thread(target=run_update, daemon=True).start()
+        self.update_progress_ui(0, "正在檢查 yt-dlp 核心版本... 請稍候", "orange")
+        def run_check_and_update():
+            import subprocess
+            import json
+            import urllib.request
+            import re
+
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+
+            # 1. 取得本機目前 yt-dlp 版本
+            current_ver = None
+            try:
+                ver_proc = subprocess.run(
+                    [sys.executable, "-m", "yt_dlp", "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    creationflags=creationflags
+                )
+                if ver_proc.returncode == 0:
+                    current_ver = ver_proc.stdout.strip()
+            except Exception:
+                pass
+
+            if not current_ver:
+                try:
+                    import yt_dlp
+                    current_ver = getattr(yt_dlp.version, '__version__', "未知")
+                except Exception:
+                    current_ver = "未知"
+
+            # 2. 連線 PyPI 取得線上最新版本
+            latest_ver = None
+            try:
+                req = urllib.request.Request(
+                    "https://pypi.org/pypi/yt-dlp/json",
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                )
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    pypi_data = json.loads(resp.read().decode('utf-8'))
+                    latest_ver = pypi_data.get("info", {}).get("version")
+            except Exception:
+                pass
+
+            # 版本解析與比較輔助函數
+            def parse_v(v_str):
+                try:
+                    from packaging import version
+                    return version.parse(v_str)
+                except Exception:
+                    parts = [int(p) for p in re.findall(r'\d+', str(v_str))]
+                    return tuple(parts)
+
+            has_update = False
+            if latest_ver and current_ver and current_ver != "未知":
+                try:
+                    has_update = parse_v(latest_ver) > parse_v(current_ver)
+                except Exception:
+                    has_update = (latest_ver != current_ver)
+
+            # 情況 A：已是最新版本
+            if latest_ver and not has_update:
+                def show_latest():
+                    messagebox.showinfo(
+                        "下載核心檢查",
+                        f"目前 yt-dlp 下載核心已是最新版本，無需更新！\n\n【當前版本】v{current_ver}"
+                    )
+                    self.update_progress_ui(0, f"準備就緒 (yt-dlp v{current_ver} 已是最新)", "blue")
+                self.root.after(0, show_latest)
+                return
+
+            # 情況 B：發現新版本，或無法查詢最新版本需手動確認
+            confirm = [False]
+            event = threading.Event()
+
+            def ask_user():
+                if latest_ver and has_update:
+                    prompt = (
+                        f"偵測到 yt-dlp 下載核心有新版本！\n\n"
+                        f"【目前本機版本】v{current_ver}\n"
+                        f"【線上最新版本】v{latest_ver}\n\n"
+                        f"是否立即進行核心更新？"
+                    )
+                else:
+                    prompt = (
+                        f"目前無法連線至 PyPI 查詢最新版本號（可能受網路連線影響）。\n\n"
+                        f"【目前本機版本】v{current_ver}\n\n"
+                        f"是否仍要嘗試連線執行核心修復與更新？"
+                    )
+                confirm[0] = messagebox.askyesno("更新下載核心", prompt)
+                event.set()
+
+            self.root.after(0, ask_user)
+            event.wait()
+
+            if not confirm[0]:
+                self.root.after(0, lambda: self.update_progress_ui(0, f"準備就緒 (維持 yt-dlp v{current_ver})", "blue"))
+                return
+
+            # 使用者確認更新，開始執行 pip install -U yt-dlp
+            update_status_text = f"正在更新核心 (v{current_ver} ➔ v{latest_ver})... 請稍候" if latest_ver else "正在更新 yt-dlp 核心... 請稍候"
+            self.root.after(0, lambda: self.update_progress_ui(0, update_status_text, "orange"))
+
+            try:
+                proc = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
+                    capture_output=True,
+                    text=True,
+                    timeout=90,
+                    creationflags=creationflags
+                )
+                if proc.returncode == 0:
+                    # 重新取得安裝後的最新版本號
+                    ver_proc2 = subprocess.run(
+                        [sys.executable, "-m", "yt_dlp", "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                        creationflags=creationflags
+                    )
+                    new_ver = ver_proc2.stdout.strip() if ver_proc2.returncode == 0 else (latest_ver or "最新版")
+
+                    success_msg = (
+                        f"yt-dlp 下載核心已成功修復/更新！\n\n"
+                        f"【版本更新紀錄】\n"
+                        f"舊版本：v{current_ver}\n"
+                        f"新版本：v{new_ver}\n\n"
+                        f"（v{current_ver} ➔ v{new_ver}）"
+                    )
+                    self.root.after(0, lambda: messagebox.showinfo("修復完成", success_msg))
+                    self.root.after(0, lambda: self.update_progress_ui(0, f"準備就緒 (yt-dlp v{new_ver})", "blue"))
+                else:
+                    err_msg = proc.stderr.strip() or "更新過程回傳異常錯誤碼。"
+                    self.root.after(0, lambda: messagebox.showerror("更新失敗", f"修復下載核心時發生錯誤：\n{err_msg}"))
+                    self.root.after(0, lambda: self.update_progress_ui(0, "下載核心修復失敗", "red"))
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("錯誤", f"修復下載核心失敗：\n{str(e)}"))
+                self.root.after(0, lambda: self.update_progress_ui(0, "下載核心修復失敗", "red"))
+
+        threading.Thread(target=run_check_and_update, daemon=True).start()
 
     def check_ffmpeg_environment(self):
         ffmpeg_exe = os.path.join(self.app_dir, "ffmpeg.exe")
@@ -1620,15 +1753,18 @@ class YouTubeDownloaderGUI:
         # 初始化 ydl_opts
         if fmt in ["mp4", "mkv"]:
             if "最高畫質" in quality:
-                format_str = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+                if fmt == "mkv":
+                    format_str = 'bestvideo+bestaudio/best'
+                else:
+                    format_str = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
             elif "1080" in quality:
-                format_str = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best'
+                format_str = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
             elif "720" in quality:
-                format_str = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best'
+                format_str = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best'
             elif "480" in quality:
-                format_str = 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best'
+                format_str = 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]/best'
             else:
-                format_str = 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360][ext=mp4]/best'
+                format_str = 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[height<=360]/best'
                 
             ydl_opts = {
                 'outtmpl': os.path.join(save_dir, '%(title)s [%(id)s].%(ext)s'),
@@ -1768,13 +1904,29 @@ class YouTubeDownloaderGUI:
                     err_msg = str(e)
                     
             if ret_code == 0 and filepath and os.path.exists(filepath):
+                # 取得實際下載的視訊解析度高度 (height)
+                actual_height = None
+                if download_info:
+                    if 'requested_downloads' in download_info and download_info['requested_downloads']:
+                        req_dl = download_info['requested_downloads'][0]
+                        actual_height = req_dl.get('height')
+                    if not actual_height and 'requested_formats' in download_info:
+                        for rf in download_info['requested_formats']:
+                            if rf.get('vcodec') != 'none' and rf.get('height'):
+                                actual_height = rf.get('height')
+                                break
+                    if not actual_height:
+                        actual_height = download_info.get('height')
+
                 # 標記為「已完成」
+                res_tag = f" ({actual_height}p)" if actual_height else ""
                 if self.is_playlist and hasattr(self, 'playlist_status_labels') and len(self.playlist_status_labels) > idx:
                     lbl = self.playlist_status_labels[idx]
                     if lbl and lbl.winfo_exists():
-                        self.root.after(0, lambda: lbl.config(text="✅ 已完成", fg="green"))
+                        self.root.after(0, lambda t=res_tag: lbl.config(text=f"✅ 已完成{t}", fg="green"))
                 if not self.is_playlist:
                     self._downloaded_filepath = filepath
+                    self._downloaded_resolution = actual_height
                     
                 # 下載成功後，主動檢查並清理該影片先前中斷或不同格式遺留的 .part 暫存檔
                 try:
@@ -1845,8 +1997,15 @@ class YouTubeDownloaderGUI:
                     self._split_by_chapters(filepath_copy, chapters_copy, title_copy, save_dir)
                 else:
                     if success_count == total:
+                        res_info = ""
+                        if not self.is_playlist and hasattr(self, '_downloaded_resolution') and self._downloaded_resolution:
+                            h = self._downloaded_resolution
+                            if h <= 360 and ("最高" in quality or "1080" in quality or "720" in quality):
+                                res_info = f"\n\n影片實際畫質：{h}p\n（⚠️ 提醒：來源伺服器目前最高僅開放 {h}p 串流）"
+                            else:
+                                res_info = f"\n\n影片畫質：{h}p"
                         self.root.after(0, lambda: self.update_progress_ui(100.0, f"所有任務皆已處理完成！({success_count}/{total})", "green"))
-                        self.root.after(0, lambda: messagebox.showinfo("成功", f"全部下載完畢！\n共成功下載 {success_count} / {total} 部影音。\n儲存至：\n{save_dir}"))
+                        self.root.after(0, lambda msg=res_info: messagebox.showinfo("成功", f"全部下載完畢！\n共成功下載 {success_count} / {total} 部影音。{msg}\n\n儲存至：\n{save_dir}"))
                     elif success_count > 0:
                         self.root.after(0, lambda: self.update_progress_ui(100.0, f"下載處理完畢：部分成功 ({success_count}/{total})", "orange"))
                         self.root.after(0, lambda: messagebox.showwarning("部分完成", f"下載處理完畢！\n共成功下載 {success_count} / {total} 部影音。\n（部分項目下載失敗，請檢查網路或稍後重試）\n儲存至：\n{save_dir}"))

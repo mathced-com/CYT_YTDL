@@ -74,7 +74,16 @@ def main():
         return
 
     suggested_version = get_next_version(current_version)
+    
+    ytdlp_ver = "未知"
+    try:
+        import yt_dlp
+        ytdlp_ver = getattr(yt_dlp.version, '__version__', '未知')
+    except Exception:
+        pass
+        
     print(f"目前專案版本為: {current_version}")
+    print(f"目前使用的 yt-dlp 引擎版本: {ytdlp_ver}")
     
     print("\n==============================================")
     print("      請選擇本次執行模式 (Action Mode)")

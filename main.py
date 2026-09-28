@@ -17,7 +17,7 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.4.4"
+APP_VERSION = "2.4.5"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
 
 # ===========================================================================
@@ -1013,11 +1013,6 @@ class YouTubeDownloaderGUI:
             'socket_timeout': 15,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             'logger': CancelLogger(self),
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'web']
-                }
-            },
         }
         
         # 抖音額外優化 (深度偽裝)
@@ -1331,7 +1326,6 @@ class YouTubeDownloaderGUI:
                 'ffmpeg_location': self.app_dir,
                 'nocheckcertificate': True,
                 'socket_timeout': 30,
-                'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
             }
             
             browser_choice = self.cookie_browser.get()
@@ -1816,11 +1810,6 @@ class YouTubeDownloaderGUI:
             }
             
         ydl_opts['noplaylist'] = True
-        ydl_opts['extractor_args'] = {
-            'youtube': {
-                'player_client': ['android', 'web']
-            }
-        }
 
         # 支援同步下載字幕
         if getattr(self, 'download_subtitles', None) and self.download_subtitles.get() and getattr(self, 'current_subtitles_map', None):

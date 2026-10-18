@@ -17,8 +17,22 @@ import ctypes
 import math
 
 ssl._create_default_https_context = ssl._create_unverified_context
-APP_VERSION = "2.4.5"
+APP_VERSION = "2.4.6"
 GITHUB_REPO = "mathced-com/CYT_YTDL"
+
+# ===========================================================================
+# 簡體轉繁體 (OpenCC 繁體臺灣標準 s2tw)
+# ===========================================================================
+try:
+    import opencc
+    _cc_s2tw = opencc.OpenCC('s2tw')
+    def to_traditional(text):
+        if not text:
+            return ""
+        return _cc_s2tw.convert(str(text))
+except Exception:
+    def to_traditional(text):
+        return str(text) if text else ""
 
 # ===========================================================================
 # 全域 FFmpeg 與 FFprobe 絕對路徑自適應解析
@@ -141,6 +155,11 @@ class YouTubeDownloaderGUI:
         self.download_subtitles = tk.BooleanVar(value=False)
         self.selected_sub_lang = tk.StringVar(value="")
         self.current_subtitles_map = {}  # 顯示名稱 -> (語言代碼, 是否為自動字幕)
+        
+        # 自訂檔名與簡繁轉換相關
+        self.custom_filename_var = tk.StringVar(value="")
+        self.raw_parsed_title = ""
+        self.append_video_id = tk.BooleanVar(value=False)
         
         # 載入持久化配置
         self.config_path = os.path.join(self.app_dir, "config.json")
@@ -1149,8 +1168,11 @@ class YouTubeDownloaderGUI:
             else:
                 self.is_playlist = False
                 self.playlist_status_labels = []
-                # 優先從多個欄位尋找標題
+                # 優先從多個欄位尋找標題 (真實呈現原始解析標題)
                 title = info.get('title') or info.get('fulltitle') or f"影片_{info.get('id', '未知')}"
+                self.raw_parsed_title = title
+                sugg_name = self.get_suggested_filename(info)
+                self.custom_filename_var.set(sugg_name)
                 dur_str = self.format_duration(info.get('duration'))
                 
                 # 取得章節資料
@@ -1314,6 +1336,14 @@ class YouTubeDownloaderGUI:
         self.update_progress_ui(0, f"正在下載字幕 ({sel_display})...", "blue")
         
         def run_sub_download():
+            clean_name = ""
+            if hasattr(self, 'custom_filename_var') and self.custom_filename_var.get().strip():
+                clean_name = re.sub(r'[\\/:*?"<>|\r\n]', '_', self.custom_filename_var.get().strip()).strip()[:100]
+            
+            use_id_tag = getattr(self, 'append_video_id', None) and self.append_video_id.get()
+            id_suffix = " [%(id)s]" if use_id_tag else ""
+            sub_outtmpl = os.path.join(save_dir, f"{clean_name}{id_suffix}.%(ext)s") if clean_name else os.path.join(save_dir, f"%(title).100s{id_suffix}.%(ext)s")
+
             ydl_opts = {
                 'quiet': True,
                 'skip_download': True,
@@ -1321,7 +1351,8 @@ class YouTubeDownloaderGUI:
                 'writeautomaticsub': is_auto,
                 'subtitleslangs': [lang_code],
                 'subtitlesformat': 'srt',
-                'outtmpl': os.path.join(save_dir, '%(title)s [%(id)s].%(ext)s'),
+                'outtmpl': sub_outtmpl,
+                'windowsfilenames': True,
                 'postprocessors': [{'key': 'FFmpegSubtitlesConvertor', 'format': 'srt'}],
                 'ffmpeg_location': self.app_dir,
                 'nocheckcertificate': True,
@@ -1351,13 +1382,121 @@ class YouTubeDownloaderGUI:
                 
         threading.Thread(target=run_sub_download, daemon=True).start()
 
+    def to_traditional(self, text):
+        """將字串轉換為繁體中文 (臺灣標準)"""
+        return to_traditional(text)
+
+    def get_suggested_filename(self, info):
+        """智慧提取並精簡乾淨的繁體檔名"""
+        if not info:
+            return "video"
+        desc = info.get('description', '') or ''
+        title = info.get('title', '') or ''
+        
+        # 1. 移除 FB / YouTube 等常見統計前綴 (如 "631K views · 8.4K reactions | ")
+        clean_title = re.sub(
+            r'^\s*[\d\.,]+[KkMmBb]?\s*(?:views|觀看次數|次瀏覽)\s*[·•\|\-]\s*[\d\.,]+[KkMmBb]?\s*(?:reactions|個讚|讚)?\s*[\|｜\-—]?\s*',
+            '', title, flags=re.IGNORECASE
+        ).strip()
+        
+        # 2. 如果 description 有內容且比 title 更具體/乾淨（FB 常見情況）
+        desc_lines = [l.strip() for l in desc.splitlines() if l.strip()]
+        candidate = clean_title
+        if desc_lines and (len(clean_title) > 60 or not clean_title):
+            candidate = desc_lines[0]
+            if len(desc_lines) > 1 and len(candidate) < 25 and len(desc_lines[1]) < 35:
+                candidate = candidate.rstrip('，,。') + '，' + desc_lines[1]
+
+        # 3. 移除 Hashtag (#xxx)
+        candidate = re.sub(r'#\S+', '', candidate)
+        # 4. 移除多餘尾綴管道符 (例如 | 頻道名稱)
+        candidate = re.sub(r'\s*[|｜]\s*[^|｜]+$', '', candidate)
+        # 5. 清理 Windows 非法字元與換行
+        candidate = re.sub(r'[\\/:*?"<>|\r\n]', ' ', candidate)
+        candidate = re.sub(r'\s+', ' ', candidate).strip(' -_—,，')
+        
+        # 6. 控制適當長度 (60 字元內)
+        if len(candidate) > 60:
+            candidate = candidate[:60].strip(' -_—,，')
+            
+        final_str = candidate or clean_title[:60] or "video"
+        return final_str
+
+    def _reset_trad_button_state(self):
+        """重設轉繁體按鈕狀態為初始的「🀄 轉繁體」"""
+        self._is_trad_converted = False
+        self._before_trad_filename = ""
+        if hasattr(self, 'btn_trad') and self.btn_trad and self.btn_trad.winfo_exists():
+            self.btn_trad.config(text="🀄 轉繁體", bg="#FFF8E1", fg="#F57F17")
+
+    def _toggle_traditional_title(self):
+        """僅切換檔名設定中的文字為繁體或復原為原本字體，不影響上方解析標題"""
+        curr = self.custom_filename_var.get().strip()
+        if not curr:
+            return
+
+        if getattr(self, '_is_trad_converted', False):
+            # 目前為已轉繁體狀態，復原回原本字體
+            if getattr(self, '_before_trad_filename', None) is not None:
+                self.custom_filename_var.set(self._before_trad_filename)
+            self._reset_trad_button_state()
+        else:
+            # 備份目前字體，並轉換為繁體
+            self._before_trad_filename = self.custom_filename_var.get()
+            trad_text = self.to_traditional(curr)
+            self.custom_filename_var.set(trad_text)
+            self._is_trad_converted = True
+            if hasattr(self, 'btn_trad') and self.btn_trad and self.btn_trad.winfo_exists():
+                self.btn_trad.config(text="↩️ 復原原字", bg="#E0F7FA", fg="#006064")
+
+    def _apply_smart_title(self):
+        """將目前檔名替換為智慧精簡檔名 (保留原語系)"""
+        if hasattr(self, 'video_info') and self.video_info:
+            self._reset_trad_button_state()
+            self.custom_filename_var.set(self.get_suggested_filename(self.video_info))
+
+    def _apply_selected_text_to_filename(self):
+        """將在標題文字框中反白選取的文字直接填入檔名設定框"""
+        sel_text = ""
+        if hasattr(self, 'parsed_title_text'):
+            try:
+                sel_text = self.parsed_title_text.get("sel.first", "sel.last").strip()
+            except Exception:
+                pass
+        if sel_text:
+            clean_sel = re.sub(r'[\\/:*?"<>|\r\n]', ' ', sel_text)
+            clean_sel = re.sub(r'\s+', ' ', clean_sel).strip(' -_—,，')
+            if len(clean_sel) > 80:
+                clean_sel = clean_sel[:80].strip(' -_—,，')
+            self._reset_trad_button_state()
+            self.custom_filename_var.set(clean_sel)
+        else:
+            messagebox.showinfo("提示", "請先用滑鼠在上方標題文字中「反白選取」您想要的片段，再點擊此按鈕！")
+
+    def _copy_to_clipboard(self, text):
+        """將文字複製到剪貼簿"""
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+        except Exception:
+            pass
+
+    def _reset_original_title(self):
+        """恢復平台原始標題 (保留原樣真實呈現並做基本安全限制)"""
+        if getattr(self, 'raw_parsed_title', None):
+            self._reset_trad_button_state()
+            safe = self._sanitize_filename(self.raw_parsed_title)[:100].strip()
+            self.custom_filename_var.set(safe)
+
     def show_single_video(self, title, dur_str, thumb_url, chapters=None, subs_map=None):
         self.title_label.config(text="【單一影片解析結果】")
+        self._is_trad_converted = False
+        self._before_trad_filename = ""
         for widget in self.list_frame.scrollable_frame.winfo_children():
             widget.destroy()
             
-        # 有章節或字幕時需要更多高度
-        canvas_height = 250 if (chapters and subs_map) else (200 if (chapters or subs_map) else 150)
+        # 有章節、字幕或自訂檔名時需要更多高度
+        canvas_height = 320 if (chapters and subs_map) else (270 if (chapters or subs_map) else 220)
         self.list_frame.pack(fill="both", expand=True, padx=10, pady=5)
         self.list_frame.canvas.config(height=canvas_height)
         try:
@@ -1365,20 +1504,147 @@ class YouTubeDownloaderGUI:
         except:
             pass
         
-        row_frame = tk.Frame(self.list_frame.scrollable_frame, pady=10)
+        row_frame = tk.Frame(self.list_frame.scrollable_frame, pady=8)
         row_frame.pack(fill="x", anchor="w")
         
         thumb_label = tk.Label(row_frame, text="無圖片", bg="#e0e0e0", width=14, height=3)
         thumb_label.pack(side="left", padx=5)
         
-        txt_label = tk.Label(row_frame, text=f"{title}\n時間: {dur_str.strip() if dur_str else '未知'}", justify="left", wraplength=500, font=("Microsoft JhengHei", 10))
-        txt_label.pack(side="left", anchor="w", padx=10)
+        # 可選取、可反白複製的標題文字區域
+        title_box_frame = tk.Frame(row_frame)
+        title_box_frame.pack(side="left", fill="both", expand=True, padx=10)
+
+        self.parsed_title_text = tk.Text(
+            title_box_frame,
+            height=3,
+            wrap="word",
+            font=("Microsoft JhengHei", 10),
+            bg=self.root.cget("bg"),
+            relief="flat",
+            bd=0,
+            cursor="xterm",
+            exportselection=True
+        )
+        self.parsed_title_text.insert("1.0", f"{title}\n時間: {dur_str.strip() if dur_str else '未知'}")
+        self.parsed_title_text.config(state="disabled")
+        self.parsed_title_text.pack(fill="x", expand=True)
+
+        # 支援右鍵快速選單
+        def show_title_menu(event):
+            menu = tk.Menu(self.root, tearoff=0)
+            sel_text = ""
+            try:
+                sel_text = self.parsed_title_text.get("sel.first", "sel.last").strip()
+            except Exception:
+                pass
+            if sel_text:
+                preview = sel_text[:14] + ("..." if len(sel_text) > 14 else "")
+                menu.add_command(label=f"🏷️ 將反白文字設為檔名 (「{preview}」)", command=self._apply_selected_text_to_filename)
+                menu.add_command(label="📋 複製反白文字 (Ctrl+C)", command=lambda: self._copy_to_clipboard(sel_text))
+            else:
+                menu.add_command(label="🏷️ 將完整標題設為檔名", command=self._reset_original_title)
+                menu.add_command(label="📋 複製完整標題", command=lambda: self._copy_to_clipboard(title))
+            menu.tk_popup(event.x_root, event.y_root)
+
+        self.parsed_title_text.bind("<Button-3>", show_title_menu)
         
         if HAS_PIL and thumb_url:
             # 處理 Bilibili 可能缺少的協定頭
             if thumb_url.startswith("//"):
                 thumb_url = "https:" + thumb_url
             threading.Thread(target=self.load_thumbnail, args=(thumb_url, thumb_label), daemon=True).start()
+
+        # 檔名自訂與智慧精簡區塊
+        name_edit_frame = tk.LabelFrame(
+            self.list_frame.scrollable_frame,
+            text=" 🏷️ 下載檔名設定（可直接修改、點擊按鈕或反白上方文字設定） ",
+            font=("Microsoft JhengHei", 9, "bold"),
+            fg="#1976D2",
+            padx=10,
+            pady=6
+        )
+        name_edit_frame.pack(fill="x", padx=5, pady=(0, 6))
+
+        entry_sub_frame = tk.Frame(name_edit_frame)
+        entry_sub_frame.pack(fill="x")
+
+        self.filename_entry = tk.Entry(
+            entry_sub_frame,
+            textvariable=self.custom_filename_var,
+            font=("Microsoft JhengHei", 9),
+            relief="solid",
+            bd=1
+        )
+        self.filename_entry.pack(side="left", fill="x", expand=True, padx=(0, 6), ipady=3)
+
+        btn_apply_sel = tk.Button(
+            entry_sub_frame,
+            text="📌 套用反白選取",
+            font=("Microsoft JhengHei", 8, "bold"),
+            bg="#E8F5E9",
+            fg="#2E7D32",
+            relief="flat",
+            cursor="hand2",
+            command=self._apply_selected_text_to_filename
+        )
+        btn_apply_sel.pack(side="left", padx=2)
+
+        btn_smart = tk.Button(
+            entry_sub_frame,
+            text="🪄 智慧精簡",
+            font=("Microsoft JhengHei", 8, "bold"),
+            bg="#E3F2FD",
+            fg="#1565C0",
+            relief="flat",
+            cursor="hand2",
+            command=self._apply_smart_title
+        )
+        btn_smart.pack(side="left", padx=2)
+
+        self.btn_trad = tk.Button(
+            entry_sub_frame,
+            text="🀄 轉繁體",
+            font=("Microsoft JhengHei", 8),
+            bg="#FFF8E1",
+            fg="#F57F17",
+            relief="flat",
+            cursor="hand2",
+            command=self._toggle_traditional_title
+        )
+        self.btn_trad.pack(side="left", padx=2)
+
+        btn_reset = tk.Button(
+            entry_sub_frame,
+            text="🔄 原始標題",
+            font=("Microsoft JhengHei", 8),
+            bg="#F5F5F5",
+            fg="#616161",
+            relief="flat",
+            cursor="hand2",
+            command=self._reset_original_title
+        )
+        btn_reset.pack(side="left", padx=2)
+
+        bottom_hint_frame = tk.Frame(name_edit_frame)
+        bottom_hint_frame.pack(fill="x", pady=(3, 0))
+
+        hint_lbl = tk.Label(
+            bottom_hint_frame,
+            text="💡 提示：可直接用滑鼠反白選取上方標題文字並點擊「📌 套用反白選取」；若不需要數字 ID 可保持取消勾選。",
+            font=("Microsoft JhengHei", 8),
+            fg="#666666",
+            anchor="w"
+        )
+        hint_lbl.pack(side="left")
+
+        chk_append_id = tk.Checkbutton(
+            bottom_hint_frame,
+            text="附加影片 ID（例：[1257571879...]）",
+            variable=self.append_video_id,
+            font=("Microsoft JhengHei", 8),
+            fg="#555555"
+        )
+        chk_append_id.pack(side="right")
         
         # 若偵測到章節，顯示分割選項
         if chapters:
@@ -1745,6 +2011,24 @@ class YouTubeDownloaderGUI:
                         lbl.config(text="⏳ 等待下載", fg="gray")
 
         # 初始化 ydl_opts
+        # 計算輸出模板 (支援單一影片自訂檔名、簡轉繁與 Windows 檔名長度及字元防護)
+        custom_title = ""
+        if not self.is_playlist and hasattr(self, 'custom_filename_var'):
+            raw_custom = self.custom_filename_var.get().strip()
+            if raw_custom:
+                custom_title = raw_custom
+                custom_title = re.sub(r'[\\/:*?"<>|\r\n]', '_', custom_title).strip()
+                if len(custom_title) > 100:
+                    custom_title = custom_title[:100].strip()
+
+        use_id_tag = getattr(self, 'append_video_id', None) and self.append_video_id.get()
+        id_suffix = " [%(id)s]" if use_id_tag else ""
+
+        if custom_title:
+            out_template = os.path.join(save_dir, f"{custom_title}{id_suffix}.%(ext)s")
+        else:
+            out_template = os.path.join(save_dir, f"%(title).100s{id_suffix}.%(ext)s")
+
         if fmt in ["mp4", "mkv"]:
             if "最高畫質" in quality:
                 if fmt == "mkv":
@@ -1761,7 +2045,8 @@ class YouTubeDownloaderGUI:
                 format_str = 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[height<=360]/best'
                 
             ydl_opts = {
-                'outtmpl': os.path.join(save_dir, '%(title)s [%(id)s].%(ext)s'),
+                'outtmpl': out_template,
+                'windowsfilenames': True,
                 'format': format_str,
                 'merge_output_format': fmt,
                 'ffmpeg_location': self.app_dir,
@@ -1774,7 +2059,8 @@ class YouTubeDownloaderGUI:
             }
         elif fmt == "wav":
             ydl_opts = {
-                'outtmpl': os.path.join(save_dir, '%(title)s [%(id)s].%(ext)s'),
+                'outtmpl': out_template,
+                'windowsfilenames': True,
                 'format': 'bestaudio/best',
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
@@ -1795,7 +2081,8 @@ class YouTubeDownloaderGUI:
                 kbps = '128'
                 
             ydl_opts = {
-                'outtmpl': os.path.join(save_dir, '%(title)s [%(id)s].%(ext)s'),
+                'outtmpl': out_template,
+                'windowsfilenames': True,
                 'format': 'bestaudio/best',
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
@@ -1829,13 +2116,13 @@ class YouTubeDownloaderGUI:
                     'format': 'srt'
                 })
 
-        # 定義單個項目的下載執行函數，回傳 (idx, success_status)
+        # 定義單個項目的下載執行函數，回傳 (idx, success_status, err_msg)
         def download_single_item(item_info):
             idx, url = item_info
             
             # 若已取消，直接回傳
             if self.is_cancelled:
-                return idx, False
+                return idx, False, "使用者手動取消"
                 
             # 建立該項目的專屬配置
             item_opts = ydl_opts.copy()
@@ -1861,6 +2148,7 @@ class YouTubeDownloaderGUI:
                     
             # 連線與下載
             filepath = None
+            err_msg = ""
             try:
                 with yt_dlp.YoutubeDL(item_opts) as ydl:
                     download_info = ydl.extract_info(url, download=True)
@@ -1932,17 +2220,18 @@ class YouTubeDownloaderGUI:
                 except Exception:
                     pass
 
-                return idx, True
+                return idx, True, None
             else:
                 # 標記為「失敗」
                 if self.is_playlist and hasattr(self, 'playlist_status_labels') and len(self.playlist_status_labels) > idx:
                     lbl = self.playlist_status_labels[idx]
                     if lbl and lbl.winfo_exists():
                         self.root.after(0, lambda: lbl.config(text="❌ 下載失敗", fg="red"))
-                return idx, False
+                return idx, False, err_msg
 
         import concurrent.futures
         success_count = 0
+        failed_errors = []
         
         try:
             # 建立 ThreadPoolExecutor
@@ -1952,10 +2241,12 @@ class YouTubeDownloaderGUI:
                 
                 # 監聽完成情況
                 for future in concurrent.futures.as_completed(futures):
-                    idx, success = future.result()
+                    idx, success, item_err = future.result()
                     self.current_download_index += 1
                     if success:
                         success_count += 1
+                    elif item_err:
+                        failed_errors.append(item_err)
                         
                     # 更新整體進度 UI
                     overall_percent = (self.current_download_index / total) * 100.0
@@ -1981,7 +2272,7 @@ class YouTubeDownloaderGUI:
                         and not self.is_playlist and self._downloaded_filepath):
                     chapters_copy = list(self.current_chapters)
                     filepath_copy = self._downloaded_filepath
-                    title_copy = self.video_info.get('title', '影片') if self.video_info else '影片'
+                    title_copy = custom_title if custom_title else (self.video_info.get('title', '影片') if self.video_info else '影片')
                     self.root.after(0, lambda: self.update_progress_ui(0, f"開始依章節分割 ({len(chapters_copy)} 個章節)...", "purple"))
                     self._split_by_chapters(filepath_copy, chapters_copy, title_copy, save_dir)
                 else:
@@ -2000,7 +2291,13 @@ class YouTubeDownloaderGUI:
                         self.root.after(0, lambda: messagebox.showwarning("部分完成", f"下載處理完畢！\n共成功下載 {success_count} / {total} 部影音。\n（部分項目下載失敗，請檢查網路或稍後重試）\n儲存至：\n{save_dir}"))
                     else:
                         self.root.after(0, lambda: self.update_progress_ui(0, f"下載失敗 (0/{total})", "red"))
-                        self.root.after(0, lambda: messagebox.showerror("下載失敗", f"所有選取的 {total} 部影音皆下載失敗！\n\n可能原因：\n1. YouTube 串流加密限制 (403 Forbidden)\n2. 影片有版權或地區限制\n3. 網路連線異常"))
+                        detail_msg = ""
+                        if failed_errors:
+                            detail_msg = f"\n\n詳細錯誤訊息：\n{failed_errors[0][:300]}"
+                        self.root.after(0, lambda d=detail_msg: messagebox.showerror(
+                            "下載失敗", 
+                            f"所有選取的 {total} 部影音皆下載失敗！{d}\n\n可能原因：\n1. 影片有版權或地區限制\n2. 串流加密限制或需登入\n3. 網路連線異常或硬碟路徑異常"
+                        ))
                     
         except Exception as e:
             err_str = str(e)
@@ -2132,7 +2429,18 @@ class YouTubeDownloaderGUI:
         scrollbar = tk.Scrollbar(text_frame)
         scrollbar.pack(side="right", fill="y")
         
-        text_area = tk.Text(text_frame, font=("微軟正黑體", 10), wrap="word", yscrollcommand=scrollbar.set, bd=0, padx=10, pady=10)
+        text_area = tk.Text(
+            text_frame,
+            font=("微軟正黑體", 10),
+            wrap="char",
+            spacing1=2,
+            spacing2=2,
+            spacing3=4,
+            yscrollcommand=scrollbar.set,
+            bd=0,
+            padx=12,
+            pady=10
+        )
         text_area.pack(side="left", fill="both", expand=True)
         scrollbar.config(command=text_area.yview)
         

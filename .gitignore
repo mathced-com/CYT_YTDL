@@ -2,3 +2,5 @@ ffmpeg.exe
 ffprobe.exe 
 __pycache__/ 
 Downloads/ 
+download/
+CYT_YTDL.exe

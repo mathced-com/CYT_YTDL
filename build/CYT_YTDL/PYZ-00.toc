@@ -1702,6 +1702,12 @@
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\opcode.py',
    'PYMODULE'),
+  ('opencc',
+   'D:\\Antigravity\\.venv\\Lib\\site-packages\\opencc\\__init__.py',
+   'PYMODULE'),
+  ('opencc.opencc',
+   'D:\\Antigravity\\.venv\\Lib\\site-packages\\opencc\\opencc.py',
+   'PYMODULE'),
   ('optparse',
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\optparse.py',

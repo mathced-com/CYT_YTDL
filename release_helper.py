@@ -47,6 +47,7 @@ def convert_md_to_txt(md_path, txt_path):
         content = re.sub(r'## ', '■ ', content)
         content = re.sub(r'# ', '', content)
         content = re.sub(r'\*\*', '', content)
+        content = re.sub(r'`', '', content)
         
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(content)
